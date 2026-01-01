@@ -1,0 +1,13 @@
+APP:
+  NAME: "Aufgaben-Meister"
+  PORT: "8080"
+
+DATABASE:
+  POSTGRES:
+    DSN: "postgres://aufgaben_meister_user:fa2bf646e49ab5e56f2b74480ba61017@localhost:6432/aufgaben_meister_db?sslmode=disable"
+  REDIS:
+    ADDR: "localhost:6379"
+    PASSWORD: "fc73ee3414373d0f5f2cd5437a2c886c"
+
+APP_SECRET:
+  HEX_KEY: "73bf3bd3031e737b3966fb0839757028cb40e4ebfebc68b7b87b394145aaa1bd"
