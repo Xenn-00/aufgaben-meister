@@ -18,13 +18,13 @@ type AuthRepo struct {
 	db *pgxpool.Pool
 }
 
+// Hier können die Methoden des AuthRepo implementiert werden.
 func NewAuthRepo(db *pgxpool.Pool) AuthRepoContract {
 	return &AuthRepo{
 		db: db,
 	}
 }
 
-// Hier können die Methoden des AuthRepo implementiert werden.
 func (r *AuthRepo) CountUsers(ctx context.Context, filter entity.UserCountFilter) (int64, *app_errors.AppError) {
 	var count int64
 
@@ -61,7 +61,7 @@ func (r *AuthRepo) CountUsers(ctx context.Context, filter entity.UserCountFilter
 // SaveUsers speichert einen neuen Benutzer in der Datenbank.
 // Nimmt einen Kontext und ein entity.UserEntity entgegen und gibt die erzeugte Benutzer-ID,
 // die zugewiesene Rolle sowie einen optionalen AppError zurück.
-func (r *AuthRepo) SaveUsers(ctx context.Context, model entity.UserEntity) (string, string, *app_errors.AppError) {
+func (r *AuthRepo) SaveUsers(ctx context.Context, model entity.UserEntity) (string, *app_errors.AppError) {
 
 	cols := []string{"id", "email", "password_hash", "name", "username"}
 	vals := []any{model.ID, model.Email, model.PasswordHash, model.Name, model.Username}
@@ -75,20 +75,20 @@ func (r *AuthRepo) SaveUsers(ctx context.Context, model entity.UserEntity) (stri
 	query := fmt.Sprintf(`
 	INSERT INTO users (%s)
 	VALUES (%s)
-	RETURNING id, role;
+	RETURNING id;
 	`, strings.Join(cols, ","), strings.Join(placeholders, ","))
 
-	var id, role string
-	if err := r.db.QueryRow(ctx, query, vals...).Scan(&id, &role); err != nil {
+	var id string
+	if err := r.db.QueryRow(ctx, query, vals...).Scan(&id); err != nil {
 		var pgErr *pgconn.PgError
 		// Bei Verletzung von Unique-Constraints (z.B. E-Mail oder Username) wird ein Konfliktfehler (StatusConflict) zurückgegeben.
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return "", "", app_errors.New(fiber.StatusConflict, "Der Benutzer werde in der folgenden E-Mail und dem folgenden Benutzername existiert bereits", "Benutzer-Conflict")
+			return "", app_errors.New(fiber.StatusConflict, "Der Benutzer werde in der folgenden E-Mail und dem folgenden Benutzername existiert bereits", "Benutzer-Conflict")
 		}
-		return "", "", app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern der Benutzer: %v", err), "Datenbank-Fehler")
+		return "", app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern der Benutzer: %v", err), "Datenbank-Fehler")
 	}
 
-	return id, role, nil
+	return id, nil
 }
 
 // FindByEmail sucht einen Benutzer anhand der übergebenen E‑Mail-Adresse.
@@ -98,12 +98,12 @@ func (r *AuthRepo) SaveUsers(ctx context.Context, model entity.UserEntity) (stri
 func (r *AuthRepo) FindByEmail(ctx context.Context, email string) (*entity.UserEntity, *app_errors.AppError) {
 	// Base query
 	query := `
-		SELECT id, email, username, password_hash, role FROM users WHERE email = $1 LIMIT 1
+		SELECT id, email, username, password_hash, is_active FROM users WHERE email = $1 LIMIT 1
 	`
 	row := r.db.QueryRow(ctx, query, email)
 
 	var u entity.UserEntity
-	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.Role); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
 			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden E-mail nicht gefunden.", "Benutzer-Nicht-Gefunden")
@@ -121,12 +121,12 @@ func (r *AuthRepo) FindByEmail(ctx context.Context, email string) (*entity.UserE
 func (r *AuthRepo) FindByUsername(ctx context.Context, username string) (*entity.UserEntity, *app_errors.AppError) {
 	// Base query
 	query := `
-		SELECT id, email, username, password_hash, role FROM users WHERE username = $1 LIMIT 1
+		SELECT id, email, username, password_hash, is_active FROM users WHERE username = $1 LIMIT 1
 	`
 	row := r.db.QueryRow(ctx, query, username)
 
 	var u entity.UserEntity
-	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.Role); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
 			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde beim der folgenden Benutzername nicht gefunden.", "Benutzer-Nicht-Gefunden")
@@ -135,4 +135,37 @@ func (r *AuthRepo) FindByUsername(ctx context.Context, username string) (*entity
 	}
 
 	return &u, nil
+}
+
+func (r *AuthRepo) IsUserActive(ctx context.Context, userID string) (bool, *app_errors.AppError) {
+	query := `
+		SELECT is_active FROM users WHERE id = $1 
+	`
+	var IsActive bool
+	err := r.db.QueryRow(ctx, query, userID).Scan(&IsActive)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+		}
+		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+	}
+
+	return IsActive, nil
+}
+
+func (r *AuthRepo) UserActivate(ctx context.Context, tx pgx.Tx, userID string) (bool, *app_errors.AppError) {
+	query := `
+		UPDATE users
+		SET is_active = true
+		WHERE id = $1
+	`
+
+	if _, err := tx.Exec(ctx, query, userID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+		}
+		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+	}
+
+	return true, nil
 }

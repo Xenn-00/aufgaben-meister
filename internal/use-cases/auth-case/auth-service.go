@@ -13,6 +13,7 @@ import (
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
@@ -74,13 +75,13 @@ func (s *AuthService) RegisterUser(ctx context.Context, req auth_dto.RegisterUse
 		PasswordHash: hashed,
 	}
 
-	newUserID, newUserRole, err := s.repo.SaveUsers(ctx, *newUser)
+	newUserID, err := s.repo.SaveUsers(ctx, *newUser)
 	if err != nil {
 		return nil, err
 	}
 
 	// Token erstellen
-	token, pasetoErr := s.paseto.CreateToken(newUserID, newUser.Username, newUser.Email, newUserRole, 15*time.Minute)
+	token, pasetoErr := s.paseto.CreateToken(newUserID, newUser.Username, newUser.Email, true, 15*time.Minute)
 	if pasetoErr != nil {
 		return nil, app_errors.New(fiber.StatusInternalServerError, pasetoErr.Error(), "Paseto-Generiert")
 	}
@@ -136,13 +137,44 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 		return nil, app_errors.New(fiber.StatusUnauthorized, "Falsches Anmeldedaten.", "Ungültige-Anmelden")
 	}
 
+	redisKey := fmt.Sprintf("user_sessions:%s:%s", user.ID, loginMeta.Device)
+	sessionCached, cachedErr := utils.GetCacheData[SessionTracker](ctx, s.redis, redisKey)
+	if sessionCached != nil {
+		response := &auth_dto.LoginUserResponse{
+			UserID: user.ID,
+			Token:  sessionCached.Token,
+		}
+
+		return response, nil
+	}
+
+	if cachedErr != nil {
+		return nil, cachedErr
+	}
+
 	// Passwort úberprüfen
 	if isValid, err := utils.VerifyHash(user.PasswordHash, req.Password); !isValid || err != nil {
 		return nil, app_errors.New(fiber.StatusUnauthorized, "Falsches Anmeldedaten.", "Ungültige-Anmelden")
 	}
 
+	// Überprüft der Benutzer, ob der noch Aktiv ist oder nicht
+	if user.IsActive == false {
+		// Wieder Aktiviert
+		tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler bei der Initialisierung der DB-Transaktion", "DB-Transaktion-Fehler")
+		}
+		defer tx.Rollback(ctx)
+		if _, activateErr := s.repo.UserActivate(ctx, tx, user.ID); activateErr != nil {
+			return nil, activateErr
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler beim Commit der DB-Transaktion", "DB-Transaktion-Fehler")
+		}
+	}
+
 	// Token erstellen
-	token, pasetoErr := s.paseto.CreateToken(user.ID, user.Username, user.Email, user.Role, 15*time.Minute)
+	token, pasetoErr := s.paseto.CreateToken(user.ID, user.Username, user.Email, user.IsActive, 15*time.Minute)
 	if pasetoErr != nil {
 		return nil, app_errors.New(fiber.StatusInternalServerError, pasetoErr.Error(), "Paseto-Generiert")
 	}
@@ -151,7 +183,6 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 		loginMeta.Device = "Unknown Device"
 	}
 
-	redisKey := fmt.Sprintf("user_sessions:%s:%s", user.ID, loginMeta.Device)
 	session := &SessionTracker{
 		Token:    token,
 		Device:   loginMeta.Device,
@@ -159,7 +190,6 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 		IP:       loginMeta.IP,
 		LoginAt:  time.Now().Format(time.RFC3339),
 	}
-
 	utils.SetCacheData(ctx, s.redis, redisKey, session, 15*time.Minute)
 
 	// Response zurücksenden

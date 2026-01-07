@@ -17,6 +17,6 @@ func AuthRouter(api fiber.Router, db *pgxpool.Pool, redis *redis.Client, paseto 
 	r.Post("/registieren", handlers.Wrap(authHandler.RegisterUser))
 	r.Post("/anmelden", handlers.Wrap(authHandler.LoginUser))
 	r.Delete("/abmelden", middleware.AuthMiddleware(paseto, redis), handlers.Wrap(authHandler.LogoutUser))
-	r.Delete("/alle-device-abgemeldet", middleware.AuthMiddleware(paseto, redis), handlers.Wrap(authHandler.LogoutAllDevices))
+	r.Delete("/abmelden/alle", middleware.AuthMiddleware(paseto, redis), handlers.Wrap(authHandler.LogoutAllDevices))
 	r.Get("/device-auflisten", middleware.AuthMiddleware(paseto, redis), handlers.Wrap(authHandler.ListAllUserDevices))
 }

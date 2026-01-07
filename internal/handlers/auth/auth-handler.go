@@ -34,7 +34,7 @@ func (h *AuthHandler) RegisterUser(c *fiber.Ctx) *app_errors.AppError {
 	var req auth_dto.RegisterUserRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht analysiert werden: %v", err), "Ungültige-Anfrage")
+		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht geparst werden: %v", err), "Ungültige-Anfrage")
 	}
 	// 2. Validieren
 	if err := h.validator.Struct(req); err != nil {
@@ -53,7 +53,7 @@ func (h *AuthHandler) RegisterUser(c *fiber.Ctx) *app_errors.AppError {
 	}
 
 	// 5. Antwort zurückgeben
-	webResp := handlers.CreateResponse("Benützer erfolgreich registriert", resp, reqID)
+	webResp := handlers.CreateResponse("Benutzer erfolgreich registriert", resp, reqID)
 	if err := c.Status(fiber.StatusCreated).JSON(webResp); err != nil {
 		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
 	}
@@ -67,7 +67,7 @@ func (h *AuthHandler) LoginUser(c *fiber.Ctx) *app_errors.AppError {
 	var req auth_dto.LoginUserRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht analysiert werden: %v", err), "Ungültige-Anfrage")
+		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht geparst werden: %v", err), "Ungültige-Anfrage")
 	}
 	// 2. Validieren
 	if err := h.validator.Struct(req); err != nil {

@@ -12,5 +12,6 @@ func SetupRoutes(app *fiber.App, db *pgxpool.Pool, redis *redis.Client, paseto *
 	api := app.Group("/api/v1")
 
 	AuthRouter(api, db, redis, paseto)
-	HealthRouter(api, db)
+	UserRouter(api, db, redis, paseto)
+	HealthRouter(api, db, redis)
 }

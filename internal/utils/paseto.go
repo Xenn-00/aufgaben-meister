@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"time"
 
 	"aidanwoods.dev/go-paseto"
@@ -32,7 +33,7 @@ func GenerateSymmetricKey() string {
 }
 
 // CreateToken erstellt ein lokales V4 Token (encrypted)
-func (m *PasetoMaker) CreateToken(userID, username, email, role string, duration time.Duration) (string, error) {
+func (m *PasetoMaker) CreateToken(userID, username, email string, isUserActive bool, duration time.Duration) (string, error) {
 	token := paseto.NewToken()
 
 	// Standard Claims festlegen
@@ -45,8 +46,8 @@ func (m *PasetoMaker) CreateToken(userID, username, email, role string, duration
 
 	// Benutzerdefiniert Claims festlegen
 	token.SetString("username", username)
+	token.SetString("is_active", strconv.FormatBool(isUserActive))
 	token.SetString("email", email)
-	token.SetString("role", role)
 
 	// Encrypt mit V4 local (symmetric)
 	encypted := token.V4Encrypt(m.symmetricKey, nil)
@@ -58,7 +59,7 @@ type PayloadPaseto struct {
 	UserID   string
 	Username string
 	Email    string
-	Role     string
+	IsActive string
 	Duration time.Time
 }
 
@@ -82,7 +83,7 @@ func (m *PasetoMaker) VerifyToken(tokenString string) (*PayloadPaseto, error) {
 	userID, _ := claims["sub"].(string)
 	username, _ := claims["username"].(string)
 	email, _ := claims["email"].(string)
-	role, _ := claims["role"].(string)
+	isActive, _ := claims["is_Active"].(string)
 
 	var exp time.Time
 	if t, ok := claims["exp"].(time.Time); ok {
@@ -99,7 +100,7 @@ func (m *PasetoMaker) VerifyToken(tokenString string) (*PayloadPaseto, error) {
 		UserID:   userID,
 		Username: username,
 		Email:    email,
-		Role:     role,
+		IsActive: isActive,
 		Duration: exp,
 	}
 

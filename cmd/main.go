@@ -14,7 +14,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -23,9 +22,7 @@ import (
 	"github.com/Xenn-00/aufgaben-meister/internal/middleware"
 	"github.com/Xenn-00/aufgaben-meister/internal/routers"
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
-	"github.com/gofiber/contrib/fiberzerolog"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -34,7 +31,7 @@ import (
 func main() {
 	// Ablauf (Kurzfassung):
 	// 0. Konfiguration ein Logger
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+	// logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
 	// 1. Konfiguration laden (config.LoadConfig).
 	cfg := config.LoadConfig()
 	// 2. Postgres-Verbindungs-Pool (db.ConnectPool) und Redis-Verbindungs-Pool erstellen.
@@ -54,10 +51,11 @@ func main() {
 		ErrorHandler: middleware.ErrorHandlerMiddleware,
 	})
 	app.Use(middleware.RequestIDMiddleware())
-	app.Use(fiberzerolog.New(fiberzerolog.Config{
-		Logger: &logger,
-		Fields: []string{"request_id"}, // Custom Feld
-	}))
+	// app.Use(fiberzerolog.New(fiberzerolog.Config{
+	// 	Logger: &logger,
+	// 	Fields: []string{"request_id"}, // Custom Feld
+	// }))
+	app.Use(middleware.LoggerMiddleware())
 
 	// 5. Applikationsrouten registrieren (routers.SetupRoutes).
 	routers.SetupRoutes(app, dbPool, redisPool, paseto)
