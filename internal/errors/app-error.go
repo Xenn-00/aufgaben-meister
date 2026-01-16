@@ -1,29 +1,53 @@
 package app_errors
 
-import "fmt"
-
 // AppError repräsentiert einen Anwendungsfehler mit einem Code, einer Nachricht und optional einem Feld.
 type AppError struct {
-	Code    int    `json:"-"`
-	Message string `json:"message"`
-	Field   string `json:"field,omitempty"`
+	Code       int          // HTTP status code
+	Type       string       // VALIDATION_ERROR, NOT_FOUND, usw
+	MessageKey string       // i18n key
+	Details    []FieldError // optional (validation)
+	Err        error        // original error (internal only)
 }
 
-func (e AppError) Error() string {
-	return e.Message
+const (
+	ErrValidation   = "VALIDATION_ERROR"
+	ErrInvalidBody  = "INVALID_BODY"
+	ErrInvalidParam = "INVALID_PARAM"
+	ErrInvalidQuery = "INVALID_QUERY"
+	ErrUnauthorized = "UNAUTHORIZED"
+	ErrForbidden    = "FORBIDDEN"
+	ErrNotFound     = "NOT_FOUND"
+	ErrConflict     = "CONFLICT"
+	ErrInternal     = "INTERNAL_ERROR"
+)
+
+type FieldError struct {
+	Field      string         `json:"field"`
+	Reason     string         `json:"reason"`
+	MessageKey string         `json:"message_key"`
+	Params     map[string]any `json:"params,omitempty"`
 }
 
-func New(code int, message, field string) *AppError {
+func NewAppError(code int, errType string, messageKey string, err error) *AppError {
 	return &AppError{
-		Code:    code,
-		Message: message,
-		Field:   field,
+		Code:       code,
+		Type:       errType,
+		MessageKey: messageKey,
+		Err:        err,
 	}
 }
-func Newf(code int, format, field string, args ...any) *AppError {
+func NewValidationError(details []FieldError) *AppError {
 	return &AppError{
-		Code:    code,
-		Message: fmt.Sprintf(format, args...),
-		Field:   field,
+		Code:       400,
+		Type:       ErrValidation,
+		MessageKey: "invalid_request",
+		Details:    details,
 	}
+}
+
+func (e *AppError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return e.MessageKey
 }

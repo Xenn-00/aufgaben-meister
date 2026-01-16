@@ -14,24 +14,29 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Xenn-00/aufgaben-meister/internal/config"
 	"github.com/Xenn-00/aufgaben-meister/internal/db"
+	"github.com/Xenn-00/aufgaben-meister/internal/i18n"
 	"github.com/Xenn-00/aufgaben-meister/internal/middleware"
 	"github.com/Xenn-00/aufgaben-meister/internal/routers"
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 // main initialisiert alle benötigten Ressourcen für den HTTP-Server und stellt sicher,
 // dass bei Beendigung sauber heruntergefahren und aufgeräumt wird.
 func main() {
-	// Ablauf (Kurzfassung):
-	// 0. Konfiguration ein Logger
-	// logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
+	// 0. I18N Einführung
+	i18nSvc := i18n.NewInitI18nService()
 	// 1. Konfiguration laden (config.LoadConfig).
 	cfg := config.LoadConfig()
 	// 2. Postgres-Verbindungs-Pool (db.ConnectPool) und Redis-Verbindungs-Pool erstellen.
@@ -48,17 +53,18 @@ func main() {
 
 	// 4. Fiber-App mit ErrorHandler, RequestID- und Logger-Middleware erstellen.
 	app := fiber.New(fiber.Config{
-		ErrorHandler: middleware.ErrorHandlerMiddleware,
+		ErrorHandler: middleware.ErrorHandlerMiddleware(i18nSvc),
 	})
 	app.Use(middleware.RequestIDMiddleware())
-	// app.Use(fiberzerolog.New(fiberzerolog.Config{
-	// 	Logger: &logger,
-	// 	Fields: []string{"request_id"}, // Custom Feld
-	// }))
+	app.Use(middleware.AcceptLanguageMiddleware())
 	app.Use(middleware.LoggerMiddleware())
 
 	// 5. Applikationsrouten registrieren (routers.SetupRoutes).
-	routers.SetupRoutes(app, dbPool, redisPool, paseto)
+	cfgStorage := routers.CfgRedisStorage{
+		Host:     cfg.DATABASE.Redis.Addr,
+		Password: cfg.DATABASE.Redis.Password,
+	}
+	routers.SetupRoutes(app, dbPool, redisPool, i18nSvc, paseto, cfgStorage)
 
 	go func() {
 		// 6. HTTP-Server starten (app.Listen), soll es am Ende stellen, weil es blocking ist. Aber wir können es eigenlich in eine Goroutine einfügen.

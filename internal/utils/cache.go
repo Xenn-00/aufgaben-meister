@@ -21,11 +21,11 @@ func GetCacheData[T any](ctx context.Context, rdb *redis.Client, cacheKey string
 		return nil, nil // Cache-miss
 	} else if err != nil {
 		// Bei Redis-Fehlern oder JSON-Unmarshal-Fehlern wird (nil, *app_errors.AppError) zurückgegeben.
-		return nil, app_errors.New(fiber.StatusInternalServerError, "Beim Versuch, Daten aus Redis abzurufen, tritt ein unerwarteter Fehler auf", "Redis abrufen")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	var data T
 	if err := json.Unmarshal([]byte(val), &data); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, "Beim Unmarshaling von JSON tritt ein unerwarteter Fehler auf.", "JSON-Unmarshall")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	return &data, nil
 }
@@ -33,15 +33,19 @@ func GetCacheData[T any](ctx context.Context, rdb *redis.Client, cacheKey string
 // SetCacheData serialisiert das gegebene Objekt (T) als JSON und speichert es mit Ablaufzeit in Redis.
 // Parameter: ctx, rdb, cacheKey, data Pointer auf zu speicherndes Objekt, expire Dauer bis Ablauf.
 // Hinweis: Daten werden als JSON-Bytes gespeichert.
-func SetCacheData[T any](ctx context.Context, rdb *redis.Client, cacheKey string, data *T, expire time.Duration) error {
+func SetCacheData[T any](ctx context.Context, rdb *redis.Client, cacheKey string, data *T, expire time.Duration) *app_errors.AppError {
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		// Bei JSON-Marshal-Fehler wird ein *app_errors.AppError zurückgegeben.
-		return app_errors.New(fiber.StatusInternalServerError, "Beim Marshalling von JSON tritt ein unerwarteter Fehler auf.", "JSON-Marshal")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	// Sonst wird das Ergebnis von rdb.Set(...).Err() zurückgegeben (nil bei Erfolg, Fehler sonst).
-	return rdb.Set(ctx, cacheKey, bytes, expire).Err()
+	if err := rdb.Set(ctx, cacheKey, bytes, expire).Err(); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+
+	return nil
 }
 
 // DeleteCacheData löscht den angegebenen cacheKey aus Redis.

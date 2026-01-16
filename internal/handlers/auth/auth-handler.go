@@ -1,11 +1,10 @@
 package auth_handlers
 
 import (
-	"fmt"
-
 	auth_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/auth-dto"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/Xenn-00/aufgaben-meister/internal/handlers"
+	internal_i18n "github.com/Xenn-00/aufgaben-meister/internal/i18n"
 	auth_case "github.com/Xenn-00/aufgaben-meister/internal/use-cases/auth-case"
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	"github.com/go-playground/validator/v10"
@@ -17,28 +16,30 @@ import (
 type AuthHandler struct {
 	validator *validator.Validate
 	service   auth_case.AuthServiceContract
+	i18n      internal_i18n.Service
 }
 
-func NewAuthHandler(db *pgxpool.Pool, redis *redis.Client, paseto *utils.PasetoMaker) *AuthHandler {
+func NewAuthHandler(db *pgxpool.Pool, redis *redis.Client, i18n *internal_i18n.I18nService, paseto *utils.PasetoMaker) *AuthHandler {
 	validate := validator.New()
 	return &AuthHandler{
 		validator: validate,
+		i18n:      i18n,
 		service:   auth_case.NewAuthService(db, redis, paseto),
 	}
 }
 
 // RegisterUser behandelt die Registrierung eines neuen Benutzers.
-func (h *AuthHandler) RegisterUser(c *fiber.Ctx) *app_errors.AppError {
+func (h *AuthHandler) RegisterUser(c *fiber.Ctx) error {
 	// TODO: Was soll hier passieren?
 	// 1. Anfrage parsen
 	var req auth_dto.RegisterUserRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht geparst werden: %v", err), "Ungültige-Anfrage")
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidBody, "request.invalid_body", err)
 	}
 	// 2. Validieren
 	if err := h.validator.Struct(req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage ist ungültig: %v", err), "Ungültige-Anfrage")
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
 	}
 	// 3. Service aufrufen
 	resp, err := h.service.RegisterUser(c.Context(), req)
@@ -47,31 +48,30 @@ func (h *AuthHandler) RegisterUser(c *fiber.Ctx) *app_errors.AppError {
 	}
 
 	// 4. Krieg die Request ID
-	reqID, ok := c.Locals("request_id").(string)
-	if !ok {
-		reqID = "unknown"
-	}
+	reqID := handlers.GetRequestID(c)
 
 	// 5. Antwort zurückgeben
-	webResp := handlers.CreateResponse("Benutzer erfolgreich registriert", resp, reqID)
+
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_register", nil), resp, reqID)
 	if err := c.Status(fiber.StatusCreated).JSON(webResp); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
 	return nil
 }
 
 // LoginUser behandelt die Anmeldung eines Benutzers.
-func (h *AuthHandler) LoginUser(c *fiber.Ctx) *app_errors.AppError {
+func (h *AuthHandler) LoginUser(c *fiber.Ctx) error {
 	// TODO: Was soll hier passieren?
 	// 1. Anfrage parsen
 	var req auth_dto.LoginUserRequest
 
 	if err := c.BodyParser(&req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage kann nicht geparst werden: %v", err), "Ungültige-Anfrage")
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrValidation, "request.invalid_body", err)
 	}
 	// 2. Validieren
 	if err := h.validator.Struct(req); err != nil {
-		return app_errors.New(fiber.StatusBadRequest, fmt.Sprintf("Die Anfrage ist ungültig: %v", err), "Ungültige-Anfrage")
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
 	}
 
 	// 3. Login metadata erstellen
@@ -96,75 +96,55 @@ func (h *AuthHandler) LoginUser(c *fiber.Ctx) *app_errors.AppError {
 	}
 
 	// 4. Krieg die Request ID
-	reqID, ok := c.Locals("request_id").(string)
-	if !ok {
-		reqID = "unknown"
-	}
+	reqID := handlers.GetRequestID(c)
 
 	// 5. Antwort zurückgeben
-	webResp := handlers.CreateResponse("Benützer erfolgreich anmelden", resp, reqID)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_login", nil), resp, reqID)
 	if err := c.Status(fiber.StatusCreated).JSON(webResp); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
 	return nil
 
 }
 
 // LogoutUser beendet die Sitzung eines authentifizierten Benutzers für ein bestimmtes Gerät.
-func (h *AuthHandler) LogoutUser(c *fiber.Ctx) *app_errors.AppError {
+func (h *AuthHandler) LogoutUser(c *fiber.Ctx) error {
 	// LogoutUser braucht keine Anfrage
-	// Wir benötigen stattdessen eine Benutzer-ID von c.Locals
-	userID, ok := c.Locals("user_id").(string)
-	if !ok || userID == "" {
-		return app_errors.New(fiber.StatusUnauthorized, "Nicht authorisiert. Kein Benutzer gefunden", "Kein-Benutzer")
+	// Wir benötigen stattdessen eine JTI von c.Locals
+	jti, ok := c.Locals("jti").(string)
+	if !ok || jti == "" {
+		return app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", nil)
 	}
 
-	deviceName, ok := c.Locals("device_name").(string)
-	if !ok || deviceName == "" {
-		return app_errors.New(fiber.StatusUnauthorized, "Gerät kann nicht erkannt werden", "Unbekanntes-Gerät")
-	}
-
-	if err := h.service.LogoutUser(c.Context(), userID, deviceName); err != nil {
+	if err := h.service.LogoutUser(c.Context(), jti); err != nil {
 		return err
 	}
 
-	reqID, ok := c.Locals("request_id").(string)
-	if !ok {
-		reqID = "unknown"
-	}
+	reqID := handlers.GetRequestID(c)
 
-	webResp := handlers.CreateResponse("Benutzer erfolgreich abmelden", "OK", reqID)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "respons.success_logout", nil), "OK", reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
 	return nil
 }
 
 // ListAllUserDevices listet alle registrierten Geräte eines Benutzers auf.
-//
-// Beschreibung:
-//
-//	Liest die Benutzer-ID aus c.Locals("user_id") und ruft den Auth-Service auf,
-//	um alle zugehörigen Geräte zu holen. Die erfolgreiche Antwort wird als JSON
-//	mit HTTP-Status 200 zurückgegeben.
-//
 // Hinweis:
 //   - Erwartet, dass eine vorgelagerte Middleware die Authentifizierung übernimmt
 //     und "user_id" in c.Locals setzt.
-func (h *AuthHandler) ListAllUserDevices(c *fiber.Ctx) *app_errors.AppError {
+func (h *AuthHandler) ListAllUserDevices(c *fiber.Ctx) error {
 	// Erwartete c.Locals:
 	//   - "user_id" (string): ID des authentifizierten Benutzers (erforderlich)
 	//   - "request_id" (string): optional, wird zur Antwort-Trace verwendet
-	userID, ok := c.Locals("user_id").(string)
-	if !ok || userID == "" {
-		// Gibt 401 Unauthorized zurück, wenn "user_id" fehlt oder leer ist.
-		return app_errors.New(fiber.StatusUnauthorized, "Nicht authorisiert. Kein Benutzer gefunden", "Kein-Benutzer")
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	reqID, ok := c.Locals("request_id").(string)
-	if !ok {
-		reqID = "unknown"
-	}
+	reqID := handlers.GetRequestID(c)
 
 	// Ruft h.service.ListAllUserDevices(ctx, userID) auf, um die Geräteliste zu erhalten.
 	devices, err := h.service.ListAllUserDevices(c.Context(), userID)
@@ -177,35 +157,33 @@ func (h *AuthHandler) ListAllUserDevices(c *fiber.Ctx) *app_errors.AppError {
 		"devices": devices,
 	}
 
-	webResp := handlers.CreateResponse("Alle Geräte des Benutzers erfolgreich auflisten.", resp, reqID, map[string]any{"count_devices": len(*devices)})
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_list_device", nil), resp, reqID, map[string]any{"count_devices": len(*devices)})
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		// Gibt 500 Internal Server Error, falls die Antwort nicht serialisiert/gesendet werden kann.
-		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
 
 	return nil
 }
 
-func (h *AuthHandler) LogoutAllDevices(c *fiber.Ctx) *app_errors.AppError {
-	userID, ok := c.Locals("user_id").(string)
-	if !ok || userID == "" {
-		// Gibt 401 Unauthorized zurück, wenn "user_id" fehlt oder leer ist.
-		return app_errors.New(fiber.StatusUnauthorized, "Nicht authorisiert. Kein Benutzer gefunden", "Kein-Benutzer")
+func (h *AuthHandler) LogoutAllDevices(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	reqID, ok := c.Locals("request_id").(string)
-	if !ok {
-		reqID = "unknown"
-	}
+	reqID := handlers.GetRequestID(c)
 
 	if err := h.service.LogoutAllDevices(c.Context(), userID); err != nil {
 		return err
 	}
 
-	webResp := handlers.CreateResponse("Alle Geräte wurden erfolgreich abgemeldet.", "OK", reqID)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_logout_all", nil), "OK", reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		// Gibt 500 Internal Server Error, falls die Antwort nicht serialisiert/gesendet werden kann.
-		return app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Senden der Antwort: %v", err), "Antwort-Fehler")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
 
 	return nil

@@ -21,6 +21,18 @@ func LoggerMiddleware() fiber.Handler {
 		log.Info().Str("[request_id]", reqID).Msgf("%s %s (%v) %d", method, c.Path(), duration, c.Response().StatusCode())
 
 		return err
+		// reqID, _ := c.Locals("request_id").(string)
+
+		// logger := log.With().
+		// 	Str("request_id", reqID).
+		// 	Str("path", c.Path()).
+		// 	Str("method", c.Method()).
+		// 	Logger()
+
+		// ctx := logger.WithContext(c.Context())
+		// c.SetUserContext(ctx)
+
+		// return c.Next()
 
 	}
 }

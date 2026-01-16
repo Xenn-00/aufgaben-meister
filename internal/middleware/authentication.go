@@ -47,18 +47,8 @@ func AuthMiddleware(pasetoMaker *utils.PasetoMaker, redis *redis.Client) fiber.H
 
 		// Verifizieren via PASETO
 		payload, err := pasetoMaker.VerifyToken(token)
-		// Überprüft ein Token, ob es noch in Redis oder nicht ist.
-		device := c.Get("X-Device-Name")
-		if device == "" {
-			device = "Unknown Device"
-		}
-		redisKey := fmt.Sprintf("user_sessions:%s:%s", payload.UserID, device)
 		if err != nil {
 			log.Err(err).Msg("Verification error")
-			// Löschen Redis Cache des Benutzers
-			if err := utils.DeleteCacheData(c.Context(), redis, redisKey); err != nil {
-				log.Err(err).Msg("Fehler beim Löschen Redis Cache die Token des Benutzers.")
-			}
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"status": "error",
 				"error": dtos.ErrorResponse{
@@ -68,6 +58,13 @@ func AuthMiddleware(pasetoMaker *utils.PasetoMaker, redis *redis.Client) fiber.H
 			})
 		}
 
+		// Überprüft ein Token, ob es noch in Redis oder nicht ist.
+		device := c.Get("X-Device-Name")
+		if device == "" {
+			device = "Unknown Device"
+		}
+
+		redisKey := fmt.Sprintf("session:%s", payload.JTI)
 		session, _ := utils.GetCacheData[auth_case.SessionTracker](c.Context(), redis, redisKey)
 		if session == nil || session.Token != token {
 			log.Err(err).Msg("Redis error")
@@ -90,6 +87,7 @@ func AuthMiddleware(pasetoMaker *utils.PasetoMaker, redis *redis.Client) fiber.H
 			isActive = parsed
 		}
 		c.Locals("is_active", isActive)
+		c.Locals("jti", payload.JTI)
 		c.Locals("device_name", device)
 
 		return c.Next()

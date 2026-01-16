@@ -1,0 +1,3 @@
+ALTER TABLE project_invitations
+ALTER COLUMN token_hash DROP NOT NULL,
+ALTER COLUMN token_hash SET DEFAULT NULL;

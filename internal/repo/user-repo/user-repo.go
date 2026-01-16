@@ -35,9 +35,9 @@ func (r *UserRepo) FindByUserID(ctx context.Context, userID string) (*entity.Use
 	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.Name, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
-			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	return &u, nil
 }
@@ -58,9 +58,9 @@ func (r *UserRepo) IsUnderOneProject(ctx context.Context, reqUserID, userID stri
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
-			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return false, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	return exists, nil
 }
@@ -79,9 +79,9 @@ func (r *UserRepo) FindUserWithProjects(ctx context.Context, userID string) (*en
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
-			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	defer rows.Close()
 
@@ -128,7 +128,7 @@ func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, tx pgx.Tx, userID st
 	}
 
 	if len(setClauses) == 0 {
-		return nil, app_errors.New(fiber.StatusBadRequest, "Keine Felder zum Aktualisieren.", "Ungültiges-Felder")
+		return nil, app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidBody, "request.invalid_body", fmt.Errorf("Keine Felder zum Aktualisieren."))
 	}
 
 	query := fmt.Sprintf(`
@@ -154,9 +154,9 @@ func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, tx pgx.Tx, userID st
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return &user, nil
@@ -170,9 +170,9 @@ func (r *UserRepo) DeactivateSelfUser(ctx context.Context, tx pgx.Tx, userID str
 	`
 	if _, err := tx.Exec(ctx, query, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return false, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return true, nil

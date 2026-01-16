@@ -52,7 +52,7 @@ func (r *AuthRepo) CountUsers(ctx context.Context, filter entity.UserCountFilter
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil // Kein Benutzer gefunden
 		}
-		return 0, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Zählen der Benutzer: %v", err), "Datenbank-Fehler")
+		return 0, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return count, nil
@@ -83,9 +83,9 @@ func (r *AuthRepo) SaveUsers(ctx context.Context, model entity.UserEntity) (stri
 		var pgErr *pgconn.PgError
 		// Bei Verletzung von Unique-Constraints (z.B. E-Mail oder Username) wird ein Konfliktfehler (StatusConflict) zurückgegeben.
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return "", app_errors.New(fiber.StatusConflict, "Der Benutzer werde in der folgenden E-Mail und dem folgenden Benutzername existiert bereits", "Benutzer-Conflict")
+			return "", app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict", nil)
 		}
-		return "", app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern der Benutzer: %v", err), "Datenbank-Fehler")
+		return "", app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return id, nil
@@ -106,9 +106,9 @@ func (r *AuthRepo) FindByEmail(ctx context.Context, email string) (*entity.UserE
 	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
-			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden E-mail nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return &u, nil
@@ -129,9 +129,9 @@ func (r *AuthRepo) FindByUsername(ctx context.Context, username string) (*entity
 	if err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "20000" {
-			return nil, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde beim der folgenden Benutzername nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return &u, nil
@@ -145,9 +145,9 @@ func (r *AuthRepo) IsUserActive(ctx context.Context, userID string) (bool, *app_
 	err := r.db.QueryRow(ctx, query, userID).Scan(&IsActive)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return false, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return IsActive, nil
@@ -162,9 +162,9 @@ func (r *AuthRepo) UserActivate(ctx context.Context, tx pgx.Tx, userID string) (
 
 	if _, err := tx.Exec(ctx, query, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, app_errors.New(fiber.StatusNotFound, "Der Benutzer werde in der folgenden ID nicht gefunden.", "Benutzer-Nicht-Gefunden")
+			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}
-		return false, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Suchen der Benutzer: %v", err), "Datenbank-Fehler")
+		return false, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return true, nil

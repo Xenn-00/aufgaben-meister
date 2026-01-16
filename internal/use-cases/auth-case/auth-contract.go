@@ -11,7 +11,7 @@ import (
 type AuthServiceContract interface {
 	RegisterUser(ctx context.Context, req auth_dto.RegisterUserRequest) (*auth_dto.RegisterUserResponse, *app_errors.AppError)
 	LoginUser(ctx context.Context, req auth_dto.LoginUserRequest, loginMeta auth_dto.LoginMetadata) (*auth_dto.LoginUserResponse, *app_errors.AppError)
-	LogoutUser(ctx context.Context, userID string, deviceName string) *app_errors.AppError
+	LogoutUser(ctx context.Context, sessionID string) *app_errors.AppError
 	ListAllUserDevices(ctx context.Context, userID string) (*[]auth_dto.ListAllUserDevicesResponse, *app_errors.AppError)
 	LogoutAllDevices(ctx context.Context, userID string) *app_errors.AppError
 }

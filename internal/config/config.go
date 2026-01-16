@@ -8,8 +8,9 @@ import (
 
 type AppConfig struct {
 	APP struct {
-		Name string `mapstructure:"NAME"`
-		Port string `mapstructure:"PORT"`
+		Name  string `mapstructure:"NAME"`
+		Port  string `mapstructure:"PORT"`
+		State string `mapstructure:"STATE"`
 	}
 
 	DATABASE struct {
@@ -25,6 +26,22 @@ type AppConfig struct {
 	APP_SECRET struct {
 		Paseto struct {
 			HexKey string `mapstructure:"HEX_KEY"`
+		}
+	}
+
+	MAILTRAP struct {
+		Sandbox struct {
+			SandboxHost   string `mapstructure:"SANDBOX_HOST"`
+			SandboxAPI    string `mapstructure:"SANDBOX_API"`
+			SandboxURL    string `mapstructure:"SANDBOX_URL"`
+			SandboxDomain string `mapstructure:"SANDBOX_DOMAIN"`
+		}
+		API struct {
+			APIToken         string `mapstructure:"API_TOKEN"`
+			APIHost          string `mapstructure:"API_HOST"`
+			MailtrapTokenAPI string `mapstructure:"MAILTRAP_TOKEN_API"`
+			MailtrapURL      string `mapstructure:"MAILTRAP_URL"`
+			MailtrapDomain   string `mapstructure:"MAILTRAP_DOMAIN"`
 		}
 	}
 }

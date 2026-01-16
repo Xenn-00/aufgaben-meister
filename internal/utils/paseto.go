@@ -33,7 +33,7 @@ func GenerateSymmetricKey() string {
 }
 
 // CreateToken erstellt ein lokales V4 Token (encrypted)
-func (m *PasetoMaker) CreateToken(userID, username, email string, isUserActive bool, duration time.Duration) (string, error) {
+func (m *PasetoMaker) CreateToken(userID, username, email, sessionID string, isUserActive bool, duration time.Duration) (string, error) {
 	token := paseto.NewToken()
 
 	// Standard Claims festlegen
@@ -46,8 +46,9 @@ func (m *PasetoMaker) CreateToken(userID, username, email string, isUserActive b
 
 	// Benutzerdefiniert Claims festlegen
 	token.SetString("username", username)
-	token.SetString("is_active", strconv.FormatBool(isUserActive))
 	token.SetString("email", email)
+	token.SetString("is_active", strconv.FormatBool(isUserActive))
+	token.SetString("jti", sessionID)
 
 	// Encrypt mit V4 local (symmetric)
 	encypted := token.V4Encrypt(m.symmetricKey, nil)
@@ -60,6 +61,7 @@ type PayloadPaseto struct {
 	Username string
 	Email    string
 	IsActive string
+	JTI      string
 	Duration time.Time
 }
 
@@ -84,6 +86,7 @@ func (m *PasetoMaker) VerifyToken(tokenString string) (*PayloadPaseto, error) {
 	username, _ := claims["username"].(string)
 	email, _ := claims["email"].(string)
 	isActive, _ := claims["is_Active"].(string)
+	JTI, _ := claims["jti"].(string)
 
 	var exp time.Time
 	if t, ok := claims["exp"].(time.Time); ok {
@@ -101,6 +104,7 @@ func (m *PasetoMaker) VerifyToken(tokenString string) (*PayloadPaseto, error) {
 		Username: username,
 		Email:    email,
 		IsActive: isActive,
+		JTI:      JTI,
 		Duration: exp,
 	}
 

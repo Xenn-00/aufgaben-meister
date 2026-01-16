@@ -1,6 +1,7 @@
 APP:
   NAME: "Aufgaben-Meister"
   PORT: "8080"
+  STATE: dev
 
 DATABASE:
   POSTGRES:
@@ -8,6 +9,19 @@ DATABASE:
   REDIS:
     ADDR: "localhost:6379"
     PASSWORD: "fc73ee3414373d0f5f2cd5437a2c886c"
+
+MAILTRAP:
+  SANDBOX:
+    SANDBOX_HOST: sandbox.api.mailtrap.io
+    SANDBOX_API: 5b48e46910dffa215c7b8f6a15bd5ead
+    SANDBOX_URL: https://sandbox.api.mailtrap.io/api/send/4310331
+    SANDBOX_DOMAIN: "noreply@aufgabenmeister.com"
+  API:
+    API_TOKEN: 916b8bf7b6258d212a6b624750aa89c8
+    API_HOST: send.api.mailtrap.io
+    MAILTRAP_TOKEN_API: abcbfd27a099cb1ae77ac862d28855eb
+    MAILTRAP_URL: https://send.api.mailtrap.io/api/send
+    MAILTRAP_DOMAIN: hello@demomailtrap.co
 
 APP_SECRET:
   HEX_KEY: "73bf3bd3031e737b3966fb0839757028cb40e4ebfebc68b7b87b394145aaa1bd"

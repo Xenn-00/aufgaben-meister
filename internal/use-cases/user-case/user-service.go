@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 type UserService struct {
@@ -57,7 +58,8 @@ func (s *UserService) UserSelfProfile(ctx context.Context, userID string) (*user
 
 	// Antwort im Cache speichern
 	if err := utils.SetCacheData(ctx, s.redis, redisKey, resp, 15*time.Minute); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern Daten zur Redis: %v", err), "Redis-SetData")
+		log.Error().Err(err.Err).Msg("Fehler beim Einstellen der Redis-Cache")
+		return nil, err
 	}
 
 	return resp, nil
@@ -109,7 +111,8 @@ func (s *UserService) UserProfileById(ctx context.Context, req user_dto.ParamGet
 
 	// 5. Antwort im Cache speichern
 	if err := utils.SetCacheData(ctx, s.redis, redisKey, resp, 15*time.Minute); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern Daten zur Redis: %v", err), "Redis-SetData")
+		log.Error().Err(err.Err).Msg("Fehler beim Einstellen der Redis-Cache")
+		return nil, err
 	}
 
 	return resp, nil
@@ -127,7 +130,8 @@ func (s *UserService) UpdateSelfProfile(ctx context.Context, req user_dto.Update
 
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler bei der Initialisierung der DB-Transaktion", "DB-Transaktion-Fehler")
+		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -137,7 +141,8 @@ func (s *UserService) UpdateSelfProfile(ctx context.Context, req user_dto.Update
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler beim Commit der DB-Transaktion", "DB-Transaktion-Fehler")
+		log.Error().Err(err).Msg("Fehler beim Ausführen der DB-Transaktion")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	// Prepare response
@@ -153,12 +158,14 @@ func (s *UserService) UpdateSelfProfile(ctx context.Context, req user_dto.Update
 	// revoke cache
 	redisKey := fmt.Sprintf("user_profile:%s", userID)
 	if err := utils.DeleteCacheData(ctx, s.redis, redisKey); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Löschen Daten zur Redis: %v", err), "Redis-SetData")
+		log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	// set new cache data after updated
 	if err := utils.SetCacheData(ctx, s.redis, redisKey, resp, 15*time.Minute); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, fmt.Sprintf("Fehler beim Speichern Daten zur Redis: %v", err), "Redis-SetData")
+		log.Error().Err(err.Err).Msg("Fehler beim Einstellen der Redis-Cache")
+		return nil, err
 	}
 
 	return resp, nil
@@ -171,12 +178,14 @@ func (s *UserService) DeactivateSelfUser(ctx context.Context, req user_dto.Deact
 	}
 
 	if isValid, hashErr := utils.VerifyHash(user.PasswordHash, req.Password); !isValid || hashErr != nil {
-		return app_errors.New(fiber.StatusUnauthorized, "Falsches Anmeldedaten", "Ungültige-Anmelden")
+		log.Error().Err(hashErr).Msg("Fehler beim Passwort Verifiziert")
+		return app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", hashErr)
 	}
 
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, "Fehler bei der Initialisierung der DB-Transaktion", "DB-Transaktion-Fehler")
+		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -185,20 +194,22 @@ func (s *UserService) DeactivateSelfUser(ctx context.Context, req user_dto.Deact
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, "Fehler beim Commit der DB-Transaktion", "DB-Transktion-Fehler")
+		log.Error().Err(err).Msg("Fehler beim Ausführen der DB-Transaktion")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
-	pattern := fmt.Sprintf("user_sessions:%s:*", userID)
-
-	iter := s.redis.Scan(ctx, 0, pattern, 0).Iterator()
-	for iter.Next(ctx) {
-		if err := utils.DeleteCacheData(ctx, s.redis, iter.Val()); err != nil {
-			return app_errors.New(fiber.StatusInternalServerError, "Fehler beim Löschen der Sitzung.", "Logout-All")
+	key := fmt.Sprintf("user_sessions:%s:*", userID)
+	jtis, err := s.redis.SMembers(ctx, key).Result()
+	if err != nil {
+		log.Error().Err(err).Msg("Fehler beim Abrufen der Redis-SMembers")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+	for _, jti := range jtis {
+		sessionKey := fmt.Sprintf("session:%s", jti)
+		if err := utils.DeleteCacheData(ctx, s.redis, sessionKey); err != nil {
+			log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+			return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 		}
-	}
-
-	if err := iter.Err(); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, "Redis Scan Fehler", "Logout-Scan")
 	}
 
 	return nil

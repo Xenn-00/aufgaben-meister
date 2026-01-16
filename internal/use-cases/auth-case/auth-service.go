@@ -52,19 +52,22 @@ func (s *AuthService) RegisterUser(ctx context.Context, req auth_dto.RegisterUse
 	}
 
 	if count > 0 {
-		return nil, app_errors.New(fiber.StatusConflict, "Ein Benutzer mit dieser E-Mail oder diesem Benutzernamen existiert bereits.", "Benutzer-Existiert")
+		log.Debug().Msg("User already exist")
+		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict", nil)
 	}
 
 	// Passwort hashen
 	hashed, hashErr := utils.GenerateHash(req.Password)
 	if hashErr != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, hashErr.Error(), "Password-Hashen")
+		log.Error().Err(hashErr).Msg("An Error occured when trying to generate password hash")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", hashErr)
 	}
 
 	// Neuen Benutzer erstellen
 	idUser, idErr := uuid.NewV7()
 	if idErr != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, idErr.Error(), "ID-Generiert")
+		log.Error().Err(idErr).Msg("An Error occured when trying to generate uuid v7")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", idErr)
 	}
 
 	newUser := &entity.UserEntity{
@@ -81,9 +84,15 @@ func (s *AuthService) RegisterUser(ctx context.Context, req auth_dto.RegisterUse
 	}
 
 	// Token erstellen
-	token, pasetoErr := s.paseto.CreateToken(newUserID, newUser.Username, newUser.Email, true, 15*time.Minute)
+	sessionID, sessionErr := uuid.NewV7()
+	if sessionErr != nil {
+		log.Error().Err(sessionErr).Msg("An Error occured when trying to generate uuid v7")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", sessionErr)
+	}
+	token, pasetoErr := s.paseto.CreateToken(newUserID, newUser.Username, newUser.Email, sessionID.String(), true, 15*time.Minute)
 	if pasetoErr != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, pasetoErr.Error(), "Paseto-Generiert")
+		log.Error().Err(pasetoErr).Msg("An Error occured when trying to generate paseto token")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", pasetoErr)
 	}
 
 	// Response zurücksenden
@@ -98,26 +107,6 @@ func (s *AuthService) RegisterUser(ctx context.Context, req auth_dto.RegisterUse
 // LoginUser authentifiziert einen Benutzer anhand von E-Mail oder Benutzername,
 // validiert das Passwort, erzeugt ein Paseto-Token (TTL: 15 Minuten) und legt
 // eine Sitzungsinformation in Redis ab.
-//
-// Parameter:
-//   - ctx: Kontext für Request-Lifetime und Cancellation.
-//   - req: LoginUserRequest mit Identifier (E-Mail oder Benutzername) und Passwort.
-//   - loginMeta: Metadaten zur Sitzung (Device, UserAgent, IP). Falls Device leer ist,
-//     wird "Unknown Device" verwendet.
-//
-// Rückgaben:
-//   - Bei Erfolg: *auth_dto.LoginUserResponse mit UserID und Token.
-//   - Bei Fehler: *app_errors.AppError (z. B. Benutzer nicht gefunden, ungültiges Passwort,
-//     Token-Generierung, Redis-Fehler).
-//
-// Nebeneffekte:
-//   - Speichert eine Sitzung unter dem Schlüssel "user_sessions:{userID}:{device}" mit
-//     Ablaufzeit (15 Minuten).
-//   - Loggt interne Suchfehler beim Finden des Benutzers.
-//
-// Hinweise:
-// - Der Identifier wird per Regex auf E-Mail geprüft; andernfalls als Benutzername verwendet.
-// - Passwortprüfung erfolgt mit utils.VerifyHash.
 func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserRequest, loginMeta auth_dto.LoginMetadata) (*auth_dto.LoginUserResponse, *app_errors.AppError) {
 	identifier := req.Identifier
 
@@ -133,57 +122,56 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 	}
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Fehler beim Suchen der Benutzer: %v", err)
-		return nil, app_errors.New(fiber.StatusUnauthorized, "Falsches Anmeldedaten.", "Ungültige-Anmelden")
-	}
-
-	redisKey := fmt.Sprintf("user_sessions:%s:%s", user.ID, loginMeta.Device)
-	sessionCached, cachedErr := utils.GetCacheData[SessionTracker](ctx, s.redis, redisKey)
-	if sessionCached != nil {
-		response := &auth_dto.LoginUserResponse{
-			UserID: user.ID,
-			Token:  sessionCached.Token,
-		}
-
-		return response, nil
-	}
-
-	if cachedErr != nil {
-		return nil, cachedErr
+		log.Error().Err(err.Err).Msgf("Fehler beim Suchen der Benutzer: %v", err)
+		return nil, app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", err.Err)
 	}
 
 	// Passwort úberprüfen
 	if isValid, err := utils.VerifyHash(user.PasswordHash, req.Password); !isValid || err != nil {
-		return nil, app_errors.New(fiber.StatusUnauthorized, "Falsches Anmeldedaten.", "Ungültige-Anmelden")
+		log.Error().Err(err).Msg("Fehler beim Passwort Verifiziert")
+		return nil, app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", err)
 	}
 
 	// Überprüft der Benutzer, ob der noch Aktiv ist oder nicht
-	if user.IsActive == false {
+	if !user.IsActive {
 		// Wieder Aktiviert
 		tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
 		if err != nil {
-			return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler bei der Initialisierung der DB-Transaktion", "DB-Transaktion-Fehler")
+			log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
+			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 		}
 		defer tx.Rollback(ctx)
 		if _, activateErr := s.repo.UserActivate(ctx, tx, user.ID); activateErr != nil {
 			return nil, activateErr
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler beim Commit der DB-Transaktion", "DB-Transaktion-Fehler")
+			log.Error().Err(err).Msg("Fehler beim Ausführen der DB-Transaktion")
+			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 		}
 	}
 
+	// SessionID erstellen
+	sessionID, sessionError := uuid.NewV7()
+	if sessionError != nil {
+		log.Err(sessionError).Msg("An Error occured when trying to generate uuid v7")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", sessionError)
+	}
+
 	// Token erstellen
-	token, pasetoErr := s.paseto.CreateToken(user.ID, user.Username, user.Email, user.IsActive, 15*time.Minute)
+	token, pasetoErr := s.paseto.CreateToken(user.ID, user.Username, user.Email, sessionID.String(), user.IsActive, 15*time.Minute)
 	if pasetoErr != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, pasetoErr.Error(), "Paseto-Generiert")
+		log.Error().Err(pasetoErr).Msg("Fehler beim Erstellen der Paseto-Token")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", pasetoErr)
 	}
 
 	if loginMeta.Device == "" {
 		loginMeta.Device = "Unknown Device"
 	}
 
+	redisKey := fmt.Sprintf("session:%s", sessionID)
 	session := &SessionTracker{
+		JTI:      sessionID.String(),
+		UserID:   user.ID,
 		Token:    token,
 		Device:   loginMeta.Device,
 		UserAgen: loginMeta.UserAgent,
@@ -191,6 +179,9 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 		LoginAt:  time.Now().Format(time.RFC3339),
 	}
 	utils.SetCacheData(ctx, s.redis, redisKey, session, 15*time.Minute)
+
+	sessionListKey := fmt.Sprintf("user_sessions:%s", user.ID)
+	s.redis.SAdd(ctx, sessionListKey, session.JTI)
 
 	// Response zurücksenden
 	response := &auth_dto.LoginUserResponse{
@@ -205,14 +196,28 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 // Wenn deviceName leer ist, wird "Unknown Device" verwendet. Die Methode
 // entfernt den zugehörigen Redis-Eintrag (Schlüssel: "user_sessions:{userID}:{device}").
 // Rückgabe: nil bei Erfolg, ansonsten ein *app_errors.AppError bei Fehlern.
-func (s *AuthService) LogoutUser(ctx context.Context, userID string, deviceName string) *app_errors.AppError {
-	if deviceName == "" {
-		deviceName = "Unknown Device"
+func (s *AuthService) LogoutUser(ctx context.Context, sessionID string) *app_errors.AppError {
+	sessionKey := fmt.Sprintf("session:%s", sessionID)
+
+	// Der Session Abgerufen
+	session, err := utils.GetCacheData[SessionTracker](ctx, s.redis, sessionKey)
+	if err != nil || session == nil {
+		// Session bereits beendet / ungültig
+		return app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", nil)
 	}
 
-	redisKey := fmt.Sprintf("user_sessions:%s:%s", userID, deviceName)
-	if err := utils.DeleteCacheData(ctx, s.redis, redisKey); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, "Fehler beim Löschen von Redis-Daten", "Redis-Löschung")
+	userSessionKey := fmt.Sprintf("user_sessions:%s", session.UserID)
+
+	// 1. Löschen der Haupt-Session
+	if err := utils.DeleteCacheData(ctx, s.redis, sessionKey); err != nil {
+		log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+
+	// 2. Löschen der JTI von dem Set der User-Sessions
+	if err := s.redis.SRem(ctx, userSessionKey, session.JTI).Err(); err != nil {
+		log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return nil
@@ -220,16 +225,20 @@ func (s *AuthService) LogoutUser(ctx context.Context, userID string, deviceName 
 
 // ListAllUserDevices ruft alle aktiven Geräte/Sessions eines Benutzers aus Redis ab.
 func (s *AuthService) ListAllUserDevices(ctx context.Context, userID string) (*[]auth_dto.ListAllUserDevicesResponse, *app_errors.AppError) {
-	pattern := fmt.Sprintf("user_sessions:%s:*", userID)
-	iter := s.redis.Scan(ctx, 0, pattern, 0).Iterator()
+	key := fmt.Sprintf("user_sessions:%s", userID)
+	jtis, err := s.redis.SMembers(ctx, key).Result()
+	if err != nil {
+		log.Error().Err(err).Msg("Fehler beim Abrufen der Redis-SMembers")
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
 
 	var devices []auth_dto.ListAllUserDevicesResponse
-
-	for iter.Next(ctx) {
-		key := iter.Val()
-		data, err := utils.GetCacheData[SessionTracker](ctx, s.redis, key)
+	for _, jti := range jtis {
+		sessionKey := fmt.Sprintf("session:%s", jti)
+		data, err := utils.GetCacheData[SessionTracker](ctx, s.redis, sessionKey)
 		if err != nil {
-			return nil, app_errors.New(fiber.StatusInternalServerError, "Fehler beim Abrufen der Geräte.", "Redis-Scan")
+			log.Error().Err(err.Err).Msg("Fehler beim Abrufen von Redis-Cache")
+			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err.Err)
 		}
 
 		var loginAt time.Time
@@ -250,26 +259,28 @@ func (s *AuthService) ListAllUserDevices(ctx context.Context, userID string) (*[
 		})
 	}
 
-	if err := iter.Err(); err != nil {
-		return nil, app_errors.New(fiber.StatusInternalServerError, "Scan Fehler", "redis-scan")
-	}
-
 	return &devices, nil
 }
 
 // LogoutAllDevices löscht alle aktiven Sessions/Geräte eines Benutzers aus Redis.
 func (s *AuthService) LogoutAllDevices(ctx context.Context, userID string) *app_errors.AppError {
-	pattern := fmt.Sprintf("user_sessions:%s:*", userID)
-
-	iter := s.redis.Scan(ctx, 0, pattern, 0).Iterator()
-	for iter.Next(ctx) {
-		if err := utils.DeleteCacheData(ctx, s.redis, iter.Val()); err != nil {
-			return app_errors.New(fiber.StatusInternalServerError, "Fehler beim Löschen der Sitzung.", "Logout-All")
+	key := fmt.Sprintf("user_sessions:%s:*", userID)
+	jtis, err := s.redis.SMembers(ctx, key).Result()
+	if err != nil {
+		log.Error().Err(err).Msg("Fehler beim Abrufen der Redis-SMembers")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+	for _, jti := range jtis {
+		sessionKey := fmt.Sprintf("session:%s", jti)
+		if err := utils.DeleteCacheData(ctx, s.redis, sessionKey); err != nil {
+			log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+			return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 		}
 	}
 
-	if err := iter.Err(); err != nil {
-		return app_errors.New(fiber.StatusInternalServerError, "Redis Scan Fehler.", "logout-scan")
+	if err := utils.DeleteCacheData(ctx, s.redis, key); err != nil {
+		log.Error().Err(err).Msg("Fehler beim Löschen der Cache")
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 
 	return nil

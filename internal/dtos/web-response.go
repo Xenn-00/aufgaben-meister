@@ -4,7 +4,7 @@ package dtos
 type WebResponse[T any] struct {
 	Message   string         `json:"message"`
 	Data      T              `json:"data"`
-	Addition  []T            `json:"addition,omitempty"`
+	Details   []T            `json:"details,omitempty"`
 	RequestID string         `json:"request_id,omitempty"`
 	Errors    *ErrorResponse `json:"errors,omitempty"`
 }
