@@ -1,0 +1,112 @@
+[
+  { "id": "request.invalid_body", "translation": "Ungültige Anfragedaten" },
+  {
+    "id": "request.body_empty",
+    "translation": "Das Anfragefeld darf nicht leer sein"
+  },
+  {
+    "id": "request.invalid_param",
+    "translation": "Ungültiger Anfrageparameter"
+  },
+  { "id": "request.invalid_query", "translation": "Ungültiger Anfragequery" },
+  { "id": "request.too_many_invites", "translation": "Zu viele Einladungen" },
+  {
+    "id": "response.success_register",
+    "translation": "Benutzer erfolgreich registriert"
+  },
+  {
+    "id": "response.success_login",
+    "translation": "Benützer erfolgreich anmelden"
+  },
+  {
+    "id": "response.success_logout",
+    "translation": "Benutzer erfolgreich abmelden"
+  },
+  {
+    "id": "response.success_list_device",
+    "translation": "Alle Geräte des Benutzers erfolgreich auflisten."
+  },
+  {
+    "id": "response.success_logout_all",
+    "translation": "Alle Geräte wurden erfolgreich abgemeldet."
+  },
+  {
+    "id": "response.success_get_self",
+    "translation": "Erfolgreiches Abrufen des Benutzerprofils"
+  },
+  {
+    "id": "response.success_fetch_user",
+    "translation": "Erfolgreiches Abrufen des Benutzerprofils"
+  },
+  {
+    "id": "response.success_update_self",
+    "translation": "Benutzer-Profil erfolgreich aktualisiert."
+  },
+  {
+    "id": "response.success_self_deactivate",
+    "translation": "Benutzer-Profil erfolgreich Deaktiviert."
+  },
+  {
+    "id": "response.success_create_project",
+    "translation": "Ein neues Projekt erfolgreich erstellt"
+  },
+  {
+    "id": "response.success_fetch_self_project",
+    "translation": "Selbstprojekt erfolgreich abgerufen"
+  },
+  {
+    "id": "response.success_fetch_project_detail",
+    "translation": "Projektdetails anhand der ID erfolgreich abgerufen."
+  },
+  {
+    "id": "response.success_invite_member",
+    "translation": "Projektmitglied erfolgreich eingeladen."
+  },
+  {
+    "id": "response.success_accept_invitation",
+    "translation": "Projekteinladung erfolgreich angenommen."
+  },
+  {
+    "id": "response.success_list_invitation",
+    "translation": "Alle eigenen Einladungen erfolgreich aufgelistet."
+  },
+  {
+    "id": "response.success_reject_invitation",
+    "translation": "Einladung erfolgreich abgelehnt."
+  },
+  {
+    "id": "response.success_revoke_user",
+    "translation": "Einladung für Benutzer erfolgreich widerrufen."
+  },
+  {
+    "id": "response.success_resend_invitation",
+    "translation": "Einladung erfolgreich erneut gesendet."
+  },
+  {
+    "id": "response.success_fetch_invitation_in_project",
+    "translation": "Alle Einladungen für ein Projekt wurden erfolgreich abgerufen."
+  },
+  {
+    "id": "response.write_failed",
+    "translation": "Antwort konnte nicht geschrieben werden"
+  },
+  { "id": "user_not_found", "translation": "Benutzer nicht gefunden" },
+  { "id": "project_not_found", "translation": "Projekt nicht gefunden" },
+  { "id": "auth.unauthorized", "translation": "Nicht autorisiert" },
+  { "id": "conflict", "translation": "Konflikt aufgetreten" },
+  { "id": "forbidden", "translation": "Zugriff verweigert" },
+  { "id": "internal_error", "translation": "Interner Serverfehler" },
+  {
+    "id": "validation.required",
+    "translation": "Dieses Feld ist erforderlich"
+  },
+  { "id": "validation.min", "translation": "Mindestlänge ist {{.min}}" },
+  { "id": "validation.max", "translation": "Maximale Länge ist {{.max}}" },
+  { "id": "validation.email", "translation": "Ungültiges E-Mail-Format" },
+  { "id": "validation.type_project", "translation": "Ungültiger Projekttyp" },
+  {
+    "id": "validation.visibility",
+    "translation": "Ungültige Projektsichtbarkeit"
+  },
+  { "id": "validation.invalid", "translation": "Ungültiger Wert" }
+]

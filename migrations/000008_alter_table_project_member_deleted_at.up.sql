@@ -1,0 +1,2 @@
+ALTER TABLE project_members
+    ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL;

@@ -1,0 +1,1 @@
+ALTER TYPE invitation_status_enum ADD VALUE 'Rejected';

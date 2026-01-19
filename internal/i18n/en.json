@@ -1,0 +1,104 @@
+[
+  { "id": "request.invalid_body", "translation": "Invalid request data" },
+  {
+    "id": "request.body_empty",
+    "translation": "Request body field cannot blank"
+  },
+  { "id": "request.invalid_param", "translation": "Invalid request param" },
+
+  { "id": "request.invalid_query", "translation": "Invalid query" },
+  { "id": "request.too_many_invites", "translation": "Too many invites" },
+  {
+    "id": "response.success_register",
+    "translation": "User successfully registered."
+  },
+  {
+    "id": "response.success_login",
+    "translation": "User successfully login."
+  },
+  {
+    "id": "response.success_logout",
+    "translation": "User successfully logout"
+  },
+  {
+    "id": "response.success_list_device",
+    "translation": "Successfully list all of the user's devices."
+  },
+  {
+    "id": "response.success_logout_all",
+    "translation": "Successfully logout from all devices."
+  },
+  {
+    "id": "response.success_get_self",
+    "translation": "Successfully get self profile."
+  },
+  {
+    "id": "response.success_fetch_user",
+    "translation": "Successfully fetch user profile."
+  },
+  {
+    "id": "response.success_update_self",
+    "translation": "Successfully update self profile."
+  },
+  {
+    "id": "response.success_self_deactivate",
+    "translation": "Successfully deactivate user."
+  },
+  {
+    "id": "response.success_create_project",
+    "translation": "Successfully create a new project."
+  },
+  {
+    "id": "response.success_fetch_self_project",
+    "translation": "Successfully fetch self project."
+  },
+  {
+    "id": "response.success_fetch_project_detail",
+    "translation": "Successfully fetch project detail by id."
+  },
+  {
+    "id": "response.success_invite_member",
+    "translation": "Successfully invites project member(s)."
+  },
+  {
+    "id": "response.success_accept_invitation",
+    "translation": "Successfully accept project invitation."
+  },
+  {
+    "id": "response.success_list_invitation",
+    "translation": "Successfully list all self's invitations."
+  },
+  {
+    "id": "response.success_reject_invitation",
+    "translation": "Successfully reject invitation."
+  },
+  {
+    "id": "response.success_revoke_user",
+    "translation": "Successfully revoke invitation for users."
+  },
+  {
+    "id": "response.success_resend_invitation",
+    "translation": "Successfully resend invitation."
+  },
+  {
+    "id": "response.success_fetch_invitation_in_project",
+    "translation": "Successfully fetch all invitation for a project."
+  },
+  { "id": "response.write_failed", "translation": "Unable to write response" },
+  { "id": "user_not_found", "translation": "User not found" },
+  { "id": "project_not_found", "translation": "Project not found" },
+  { "id": "auth.unauthorized", "translation": "Unauthorized" },
+  { "id": "conflict", "translation": "Conflict occured" },
+  { "id": "forbidden", "translation": "Access forbidden" },
+  { "id": "internal_error", "translation": "Internal server error" },
+  { "id": "validation.required", "translation": "This field is required" },
+  { "id": "validation.min", "translation": "Minimum length is {{.min}}" },
+  { "id": "validation.max", "translation": "Maximum length is {{.max}}" },
+  { "id": "validation.email", "translation": "Invalid email format" },
+  { "id": "validation.type_project", "translation": "Invalid project type" },
+  {
+    "id": "validation.visibility",
+    "translation": "Invalid project visibility"
+  },
+  { "id": "validation.invalid", "translation": "Invalid value" }
+]
