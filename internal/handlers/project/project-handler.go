@@ -94,16 +94,12 @@ func (h *ProjectHander) GetProjectDetail(c *fiber.Ctx) error {
 		return err
 	}
 
-	var req *project_dto.ParamGetProjectByID
-	if err := c.ParamsParser(&req); err != nil {
-		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidParam, "request.invalid_param", err)
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
 	}
 
-	if err := h.validator.Struct(req); err != nil {
-		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
-	}
-
-	resp, err := h.service.GetProjectDetail(c.Context(), req.ID, userID)
+	resp, err := h.service.GetProjectDetail(c.Context(), projectID, userID)
 	if err != nil {
 		return err
 	}
@@ -126,9 +122,9 @@ func (h *ProjectHander) InviteProjectMember(c *fiber.Ctx) error {
 	}
 
 	// get param: project_id
-	var params project_dto.ParamGetProjectByID
-	if err := c.ParamsParser(&params); err != nil {
-		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidParam, "request.invalid_param", err)
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
 	}
 
 	// get req body
@@ -150,7 +146,7 @@ func (h *ProjectHander) InviteProjectMember(c *fiber.Ctx) error {
 	}
 
 	// call service
-	resp, err := h.service.InviteProjectMember(c.Context(), params.ID, userID, req)
+	resp, err := h.service.InviteProjectMember(c.Context(), projectID, userID, req)
 	if err != nil {
 		return err
 	}
@@ -252,13 +248,9 @@ func (h *ProjectHander) RevokeProjectInvitations(c *fiber.Ctx) error {
 		return err
 	}
 
-	var params project_dto.ParamGetProjectByID
-	if err := c.ParamsParser(&params); err != nil {
-		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidParam, "request.invalid_param", err)
-	}
-
-	if err := h.validator.Struct(params); err != nil {
-		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
 	}
 
 	var req *project_dto.RevokeProjectMemberRequest
@@ -271,7 +263,7 @@ func (h *ProjectHander) RevokeProjectInvitations(c *fiber.Ctx) error {
 	}
 
 	// call service
-	resp, err := h.service.RevokeProjectInvitations(c.Context(), params.ID, userID, req)
+	resp, err := h.service.RevokeProjectInvitations(c.Context(), projectID, userID, req)
 	if err != nil {
 		return err
 	}
@@ -322,13 +314,9 @@ func (h *ProjectHander) GetInvitationsInProject(c *fiber.Ctx) error {
 	}
 
 	// get project_id from param
-	var params project_dto.ParamGetProjectByID
-	if err := c.ParamsParser(&params); err != nil {
-		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidParam, "request.invalid_param", err)
-	}
-
-	if err := h.validator.Struct(params); err != nil {
-		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
 	}
 
 	// get filter queries
@@ -347,7 +335,7 @@ func (h *ProjectHander) GetInvitationsInProject(c *fiber.Ctx) error {
 	}
 
 	// call service
-	resp, err := h.service.GetInvitationsInProject(c.Context(), params.ID, userID, filters)
+	resp, err := h.service.GetInvitationsInProject(c.Context(), projectID, userID, filters)
 	if err != nil {
 		return err
 	}

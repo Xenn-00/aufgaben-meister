@@ -4,9 +4,16 @@ package dtos
 type WebResponse[T any] struct {
 	Message   string         `json:"message"`
 	Data      T              `json:"data"`
-	Details   []T            `json:"details,omitempty"`
+	Details   []any          `json:"details,omitempty"`
 	RequestID string         `json:"request_id,omitempty"`
 	Errors    *ErrorResponse `json:"errors,omitempty"`
+}
+
+type PaginationMeta struct {
+	Page       int `json:"page"`
+	Limit      int `json:"limit"`
+	Total      int `json:"total"`
+	TotalPages int `json:"total_pages"`
 }
 
 // ErrorResponse repräsentiert eine standardisierte Fehlerantwort.

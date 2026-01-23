@@ -375,7 +375,7 @@ func (s *ProjectService) GetSelfInvitationPending(ctx context.Context, userID st
 		resp = append(resp, &project_dto.SelfProjectInvitationResponse{
 			ID:          inv.ID,
 			ProjectID:   inv.ProjectID,
-			ProjectName: inv.ProjectName,
+			ProjectName: *inv.ProjectName,
 			Role:        string(inv.Role),
 			Status:      string(inv.Status),
 			ExpiresAt:   inv.ExpiresAt,

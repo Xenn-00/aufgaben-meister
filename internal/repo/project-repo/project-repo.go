@@ -329,7 +329,7 @@ func (r *ProjectRepo) GetInvitationProjectByIDWithTx(ctx context.Context, tx pgx
 	`
 
 	var projectInvitation entity.ProjectInvitationEntity
-	if err := tx.QueryRow(ctx, query, invitationID).Scan(&projectInvitation.ID, &projectInvitation.ProjectID, &projectInvitation.InvitedUserID, &projectInvitation.InvitedBy, &projectInvitation.Role, &projectInvitation.Status, &projectInvitation.TokenHash, &projectInvitation.ExpiresAt, &projectInvitation.AcceptedAt, &projectInvitation.CreatedAt); err != nil {
+	if err := tx.QueryRow(ctx, query, invitationID).Scan(&projectInvitation.ID, &projectInvitation.ProjectID, &projectInvitation.InvitedUserID, &projectInvitation.InvitedBy, &projectInvitation.Role, &projectInvitation.Status, &projectInvitation.TokenHash, &projectInvitation.ExpiresAt, &projectInvitation.AcceptedAt, &projectInvitation.CreatedAt, &projectInvitation.RevokedAt, &projectInvitation.RejectedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 		}

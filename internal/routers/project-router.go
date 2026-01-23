@@ -30,6 +30,7 @@ func ProjectRouter(api fiber.Router, db *pgxpool.Pool, redis *redis.Client, i18n
 	})
 	r.Post("/create", projectHandler.CreateNewProject)
 	r.Get("/me", projectHandler.GetSelfProject)
+	r.Get("/:project_id/detail", projectHandler.GetProjectDetail)
 	r.Post("/invite/accept", projectHandler.AcceptProjectMember)
 	r.Post("/invite/:project_id", limiter.New(limiter.Config{
 		Max:        5,

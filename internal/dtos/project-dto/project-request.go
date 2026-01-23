@@ -8,7 +8,7 @@ type CreateNewProjectRequest struct {
 	Visibility  string `json:"project_visibility" validate:"required,visibility"`
 }
 
-type ParamGetProjectByID struct {
+type ParamProjectID struct {
 	ID string `params:"project_id" validate:"required,uuid"`
 }
 

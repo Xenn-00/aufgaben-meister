@@ -34,7 +34,7 @@ type ProjectSelf struct {
 type ProjectInvitationEntity struct {
 	ID            string               `json:"id"`
 	ProjectID     string               `json:"project_id"`
-	ProjectName   string               `json:"project_name"`
+	ProjectName   *string              `json:"project_name,omitempty"`
 	InvitedUserID string               `json:"invited_user_id"`
 	InvitedBy     string               `json:"invited_by"`
 	Role          UserRole             `json:"role"`

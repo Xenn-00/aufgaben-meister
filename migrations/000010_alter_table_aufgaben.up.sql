@@ -1,0 +1,2 @@
+ALTER TABLE aufgaben
+    ADD COLUMN completed_at TIMESTAMPTZ NULL;

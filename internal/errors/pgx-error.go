@@ -14,6 +14,8 @@ func MapPgxError(err error) *AppError {
 			return NewAppError(409, ErrConflict, "conflict", err)
 		case "23503": // foreign_key_violation
 			return NewAppError(400, ErrValidation, "invalid_request", err)
+		case "20000": // no rows
+			return NewAppError(404, ErrNotFound, "not_found", err)
 		}
 	}
 
