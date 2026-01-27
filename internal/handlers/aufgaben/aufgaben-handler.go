@@ -355,3 +355,45 @@ func (h *AufgabenHandler) ReassignTask(c *fiber.Ctx) error {
 
 	return nil
 }
+
+func (h *AufgabenHandler) ListAssignedTasks(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get query filter
+	var filters aufgaben_dto.AssignedAufgabenFilter
+	if err := c.QueryParser(&filters); err != nil {
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidQuery, "request.invalid_query", err)
+	}
+
+	if filters.Status != nil {
+		s := handlers.NormalizeStatusCase(*filters.Status)
+		filters.Status = &s
+	}
+
+	if filters.Priority != nil {
+		s := strings.Title(strings.TrimSpace(*filters.Priority))
+		filters.Priority = &s
+	}
+
+	if err := h.validator.Struct(filters); err != nil {
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	}
+
+	// call service
+	resp, cursor, err := h.service.ListAssignedTasks(c.Context(), userID, &filters)
+	if err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_list_assigned_task", nil), resp, reqID, cursor)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}

@@ -5,6 +5,7 @@ import "time"
 type AufgabenEntity struct {
 	ID          string           `json:"id"`
 	ProjectID   string           `json:"project_id"`
+	ProjectName *string          `json:"project_name,omitempty"`
 	Title       string           `json:"title"`
 	Description *string          `json:"Description,omitempty"`
 	Status      AufgabenStatus   `json:"status"`
@@ -16,6 +17,29 @@ type AufgabenEntity struct {
 	UpdatedAt   *time.Time       `json:"updated_at,omitempty"`
 	DeletedAt   *time.Time       `json:"deleted_at,omitempty"`
 	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+}
+
+type AssignedAufgaben struct {
+	ID          string           `json:"id"`
+	ProjectName string           `json:"project_name"`
+	Title       string           `json:"title"`
+	Description *string          `json:"description,omitempty"`
+	Status      AufgabenStatus   `json:"status"`
+	Priority    AufgabenPriority `json:"priority"`
+	DueDate     time.Time        `json:"due_date"`
+}
+
+type ReminderAufgaben struct {
+	ID             string           `json:"id"`
+	ProjectID      string           `json:"project_id"`
+	ProjectName    string           `json:"project_name"`
+	Title          string           `json:"title"`
+	Status         AufgabenStatus   `json:"status"`
+	Priority       AufgabenPriority `json:"priority"`
+	AssigneeID     string           `json:"assignee_id"`
+	EmailAssignee  string           `json:"assignee_email"`
+	DueDate        time.Time        `json:"due_date"`
+	LastReminderAt *time.Time       `json:"last_reminder_at,omitempty"`
 }
 
 type AssignmentEventEntity struct {

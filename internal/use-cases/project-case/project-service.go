@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/dtos"
 	project_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/project-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
@@ -287,7 +288,11 @@ func (s *ProjectService) InviteProjectMember(ctx context.Context, projectID, use
 
 	// worker send email
 	for _, task := range payloadTasks {
-		if err := s.taskQueue.EnqueueSendInvitationEmail(task.InvitationID, task.RawToken); err != nil {
+		payload := &worker_task.SendInvitationEmailPayload{
+			InvitationID: task.InvitationID,
+			RawToken:     task.RawToken,
+		}
+		if err := s.taskQueue.EnqueueSendInvitationEmail(payload); err != nil {
 			log.Error().Err(err).Msg("Fehler beim Stellen die Aufgabe in die Warteschlange")
 		}
 	}
@@ -550,35 +555,39 @@ func (s *ProjectService) ResendProjectInvitations(ctx context.Context, invitatio
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	// Send to worker
-	if err := s.taskQueue.EnqueueSendInvitationEmail(invitationID, newToken); err != nil {
+	payload := &worker_task.SendInvitationEmailPayload{
+		InvitationID: invitationID,
+		RawToken:     newToken,
+	}
+	if err := s.taskQueue.EnqueueSendInvitationEmail(payload); err != nil {
 		log.Error().Err(err).Msg("Fehler beim Stellen die Aufgabe in die Warteschlange")
 	}
 
 	return nil
 }
 
-func (s *ProjectService) GetInvitationsInProject(ctx context.Context, projectID, userID string, filters project_dto.FilterProjectInvitation) (*project_dto.ListInvitationsResponse, *app_errors.AppError) {
+func (s *ProjectService) GetInvitationsInProject(ctx context.Context, projectID, userID string, filters project_dto.FilterProjectInvitation) ([]*project_dto.InvitationsInProjectResponse, *dtos.CursorPaginationMeta, *app_errors.AppError) {
 	// TODO
 	// Check authority
 	role, err := s.repo.GetUserRoleInProject(ctx, userID, projectID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if role != string(entity.MEISTER) {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
+		return nil, nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
 	// Get project info first
 	project, err := s.repo.GetProjectByID(ctx, projectID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Rule check: filters.Expired only available if filters.Status == "Pending"
 	if filters.Expired != nil {
 		if filters.Status == nil || strings.ToTitle(*filters.Status) != "Pending" {
-			return nil, app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidQuery, "invitation.expired_only_valid_for_pending", nil)
+			return nil, nil, app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidQuery, "invitation.expired_only_valid_for_pending", nil)
 		}
 	}
 
@@ -592,12 +601,18 @@ func (s *ProjectService) GetInvitationsInProject(ctx context.Context, projectID,
 	// call repo
 	rows, err := s.repo.ListInvitations(ctx, projectID, &filters)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// build response cursor
+	hasMore := false
+	if len(rows) > filters.Limit {
+		hasMore = true
+		rows = rows[:filters.Limit]
+	}
+
 	var nextCursor *time.Time
-	if len(rows) == filters.Limit {
+	if hasMore {
 		nextCursor = &rows[len(rows)-1].CreatedAt
 	}
 
@@ -613,11 +628,11 @@ func (s *ProjectService) GetInvitationsInProject(ctx context.Context, projectID,
 		})
 	}
 
-	resp := &project_dto.ListInvitationsResponse{
-		Data:       data,
+	cursor := &dtos.CursorPaginationMeta{
+		Limit:      filters.Limit,
 		NextCursor: nextCursor,
-		HasMore:    nextCursor != nil,
+		HasMore:    hasMore,
 	}
 
-	return resp, nil
+	return data, cursor, nil
 }

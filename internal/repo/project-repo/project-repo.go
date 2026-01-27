@@ -529,7 +529,7 @@ func (r *ProjectRepo) ListInvitations(ctx context.Context, projectID string, fil
 			$4::timestamptz IS NULL OR i.created_at < $4
 		)
 	ORDER BY i.created_at DESC
-	LIMIT $5;
+	LIMIT $5 + 1;
 	`
 
 	var invs []entity.ProjectInvitationEntity

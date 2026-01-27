@@ -21,4 +21,5 @@ func AufgabenRouter(api fiber.Router, db *pgxpool.Pool, redis *redis.Client, i18
 	r.Patch("/:task_id/unassign", aufgabenHandler.UnassignTask)
 	r.Patch("/:task_id/force-unassign", aufgabenHandler.ForceUnassignTask)
 	r.Patch("/:task_id/reassign", aufgabenHandler.ReassignTask)
+	r.Get("/assigned-task", aufgabenHandler.ListAssignedTasks)
 }

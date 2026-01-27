@@ -22,6 +22,14 @@ type AufgabenListFilter struct {
 	Page       int     `query:"page,omitempty" validate:"omitempty,min=1,max=100"`
 }
 
+type AssignedAufgabenFilter struct {
+	Status    *string `query:"status,omitempty" validate:"omitempty,aufgabenStatus"`
+	Priority  *string `query:"priority,omitempty" validate:"omitempty,aufgabenPriority"`
+	ProjectID *string `query:"project_id,omitempty" validate:"omitempty,uuid"`
+	Limit     int     `query:"limit,omitempty" validate:"omitempty,min=1,max=100"`
+	Cursor    *string `query:"cursor,omitempty" validate:"omitempty,uuid"`
+}
+
 type ParamTaskID struct {
 	ID string `params:"task_id" validate:"required,uuid"`
 }

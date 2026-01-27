@@ -10,7 +10,9 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	"github.com/Xenn-00/aufgaben-meister/internal/queue"
 	aufgaben_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/aufgaben-repo"
+	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,16 +22,18 @@ import (
 )
 
 type AufgabenService struct {
-	redis *redis.Client
-	db    *pgxpool.Pool
-	repo  aufgaben_repo.AufgabenRepoContract
+	redis     *redis.Client
+	db        *pgxpool.Pool
+	repo      aufgaben_repo.AufgabenRepoContract
+	taskQueue *queue.TaskQueue
 }
 
 func NewAufgabenService(db *pgxpool.Pool, redis *redis.Client) AufgabenServiceContract {
 	return &AufgabenService{
-		redis: redis,
-		db:    db,
-		repo:  aufgaben_repo.NewAufgabenRepo(db),
+		redis:     redis,
+		db:        db,
+		repo:      aufgaben_repo.NewAufgabenRepo(db),
+		taskQueue: queue.NewTaskQueue(redis),
 	}
 }
 
@@ -226,6 +230,15 @@ func (s *AufgabenService) AssignTask(ctx context.Context, userID, projectID, tas
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+
+	// Enqueue this task so that assignee can be reminded
+	payloadTask := &worker_task.SendProjectProgressReminder{
+		AufgabeID: assigned.ID,
+	}
+	remindAt := assigned.DueDate.Add(-1 * time.Hour)
+	if err := s.taskQueue.EnqueueSendProjectProgressReminder(payloadTask, remindAt); err != nil {
+		log.Error().Err(err).Msg("Fehler beim Stellen die Aufgabe in die Warteschlange")
 	}
 
 	resp := &aufgaben_dto.AufgabenAssignResponse{
@@ -640,6 +653,24 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 		if err := tx.Commit(ctx); err != nil {
 			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 		}
+
+		// Enqueue this task so that meister can be reminded
+		payloadTask := &worker_task.HandoverRequestNotifyMeister{
+			AufgabeID:        taskID,
+			ProjectName:      *task.ProjectName,
+			ProjectID:        projectID,
+			AufgabeTitle:     task.Title,
+			AufgabeStatus:    string(task.Status),
+			AssigneeID:       userID,
+			TargetAssigneeID: req.TargetID,
+			RequestedAt:      time.Now(),
+			DueDate:          *task.DueDate,
+			Note:             note,
+		}
+		if err := s.taskQueue.EnqueueHandoverRequestNotifyMeister(payloadTask); err != nil {
+			log.Error().Err(err).Msg("Fehler beim Stellen die Aufgabe in die Warteschlange")
+		}
+
 		resp = &aufgaben_dto.ReassignAufgabenResponse{
 			AufgabenID: taskID,
 			Note:       *reAssignmentEvent.Note,
@@ -649,4 +680,70 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 	}
 
 	return resp, nil
+}
+
+func (s *AufgabenService) ListAssignedTasks(ctx context.Context, userID string, filter *aufgaben_dto.AssignedAufgabenFilter) ([]*aufgaben_dto.AssignedAufgabenListItem, *dtos.CursorPaginationMeta, *app_errors.AppError) {
+	// TODO
+	// Check filter validity
+	// 1. check limit
+	if filter.Limit == 0 {
+		filter.Limit = 20
+	} else if filter.Limit > 100 {
+		filter.Limit = 100
+	}
+	// 2. check project_id if provided
+	if filter.ProjectID != nil {
+		isProjectMember, err := s.repo.CheckProjectMember(ctx, *filter.ProjectID, userID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if isProjectMember == false {
+			return nil, nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
+		}
+	}
+	// 3. check cursor validity if provided
+	if filter.Cursor != nil {
+		_, err := uuid.Parse(*filter.Cursor)
+		if err != nil {
+			return nil, nil, app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidQuery, "request.invalid_query", nil)
+		}
+	}
+	// Call repo
+	tasks, err := s.repo.ListAssignedTasks(ctx, userID, filter)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build response cursor
+	hasMore := false
+	if len(tasks) > filter.Limit {
+		hasMore = true
+		tasks = tasks[:filter.Limit]
+	}
+
+	var nextCursor *string
+	if hasMore {
+		nextCursor = &tasks[len(tasks)-1].ID
+	}
+
+	var data []*aufgaben_dto.AssignedAufgabenListItem
+	for _, task := range tasks {
+		data = append(data, &aufgaben_dto.AssignedAufgabenListItem{
+			AufgabenID:  task.ID,
+			ProjectName: task.ProjectName,
+			Title:       task.Title,
+			Description: task.Description,
+			Status:      string(task.Status),
+			Priority:    string(task.Priority),
+			DueDate:     task.DueDate,
+		})
+	}
+
+	cursor := &dtos.CursorPaginationMeta{
+		Limit:      filter.Limit,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}
+
+	return data, cursor, nil
 }

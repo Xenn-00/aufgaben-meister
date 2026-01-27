@@ -1,6 +1,10 @@
 package project_dto
 
-import "github.com/go-playground/validator/v10"
+import (
+	"time"
+
+	"github.com/go-playground/validator/v10"
+)
 
 type CreateNewProjectRequest struct {
 	Name        string `json:"name_project" validate:"required,min=3,max=255"`
@@ -29,10 +33,10 @@ type InvitationParamRequest struct {
 }
 
 type FilterProjectInvitation struct {
-	Status  *string `query:"status,omitempty" validate:"invitationStatus"`
-	Expired *bool   `query:"expired,omitempty" validate:"bool"`
-	Limit   int     `query:"limit,omitempty" validate:"omitempty,min=1,max=100"`
-	Cursor  *string `query:"cursor,omitempty" validate:"omitmepty,uuid"`
+	Status  *string    `query:"status,omitempty" validate:"invitationStatus"`
+	Expired *bool      `query:"expired,omitempty" validate:"bool"`
+	Limit   int        `query:"limit,omitempty" validate:"omitempty,min=1,max=100"`
+	Cursor  *time.Time `query:"cursor,omitempty" validate:"omitempty,datetime"`
 }
 
 type InvitationStatus string

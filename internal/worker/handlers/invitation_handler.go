@@ -5,29 +5,12 @@ import (
 	"fmt"
 
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
-	"github.com/Xenn-00/aufgaben-meister/internal/mail"
-	project_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/project-repo"
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/goccy/go-json"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 )
-
-type WorkerHander struct {
-	db     *pgxpool.Pool
-	pr     project_repo.ProjectRepoContract
-	mailer mail.Mailer
-}
-
-func NewWorkerHandler(db *pgxpool.Pool, mailer mail.Mailer) *WorkerHander {
-	return &WorkerHander{
-		db:     db,
-		pr:     project_repo.NewUserRepo(db),
-		mailer: mailer,
-	}
-}
 
 func (wh *WorkerHander) WorkerInvitationEmailHandler() asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {

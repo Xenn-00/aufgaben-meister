@@ -335,14 +335,14 @@ func (h *ProjectHander) GetInvitationsInProject(c *fiber.Ctx) error {
 	}
 
 	// call service
-	resp, err := h.service.GetInvitationsInProject(c.Context(), projectID, userID, filters)
+	resp, cursor, err := h.service.GetInvitationsInProject(c.Context(), projectID, userID, filters)
 	if err != nil {
 		return err
 	}
 
 	reqID := handlers.GetRequestID(c)
 	lang, _ := c.Locals("lang").(string)
-	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_fetch_invitation_in_project", nil), resp, reqID)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_fetch_invitation_in_project", nil), resp, reqID, cursor)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}

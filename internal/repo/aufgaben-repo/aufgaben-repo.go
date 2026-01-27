@@ -60,12 +60,13 @@ func (r *AufgabenRepo) GetUserRole(ctx context.Context, projectID, userID string
 
 func (r *AufgabenRepo) GetTaskByID(ctx context.Context, taskID string) (*entity.AufgabenEntity, *app_errors.AppError) {
 	query := `
-	SELECT * FROM aufgaben
+	SELECT a.*, p.name FROM aufgaben a
+	JOIN projects p ON p.id = a.project_id
 	WHERE id = $1;
 	`
 
 	var row entity.AufgabenEntity
-	if err := r.db.QueryRow(ctx, query, taskID).Scan(&row.ID, &row.ProjectID, &row.Title, &row.Description, &row.Status, &row.Priority, &row.AssigneeID, &row.CreatedBy, &row.DueDate, &row.CreatedAt, &row.UpdatedAt, &row.DeletedAt, &row.CompletedAt); err != nil {
+	if err := r.db.QueryRow(ctx, query, taskID).Scan(&row.ID, &row.ProjectID, &row.Title, &row.Description, &row.Status, &row.Priority, &row.AssigneeID, &row.CreatedBy, &row.DueDate, &row.CreatedAt, &row.UpdatedAt, &row.DeletedAt, &row.CompletedAt, &row.ProjectName); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "task_not_found", nil)
 		}
@@ -134,7 +135,8 @@ func (r *AufgabenRepo) CountTasks(ctx context.Context, projectID string) (int64,
 
 func (r *AufgabenRepo) ListTasks(ctx context.Context, projectID string, filter *aufgaben_dto.AufgabenListFilter) ([]entity.AufgabenEntity, *app_errors.AppError) {
 	query := `
-	SELECT * FROM aufgaben
+	SELECT a.*, p.name FROM aufgaben a
+	JOIN projects p ON p.id = a.project_id
 	WHERE project_id = $1
 		AND deleted_at IS NULL
 	`
@@ -174,7 +176,7 @@ func (r *AufgabenRepo) ListTasks(ctx context.Context, projectID string, filter *
 	var results []entity.AufgabenEntity
 	for rows.Next() {
 		var result entity.AufgabenEntity
-		if err := rows.Scan(&result.ID, &result.ProjectID, &result.Title, &result.Description, &result.Status, &result.Priority, &result.AssigneeID, &result.CreatedBy, &result.DueDate, &result.CreatedAt, &result.UpdatedAt, &result.DeletedAt, &result.CompletedAt); err != nil {
+		if err := rows.Scan(&result.ID, &result.ProjectID, &result.Title, &result.Description, &result.Status, &result.Priority, &result.AssigneeID, &result.CreatedBy, &result.DueDate, &result.CreatedAt, &result.UpdatedAt, &result.DeletedAt, &result.CompletedAt, &result.ProjectName); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 			}
@@ -265,4 +267,154 @@ func (r *AufgabenRepo) UnassignTask(ctx context.Context, tx pgx.Tx, rollbackMode
 	}
 
 	return status, nil
+}
+
+func (r *AufgabenRepo) ShouldRemind(ctx context.Context, taskID string) (*entity.ReminderAufgaben, *app_errors.AppError) {
+	query := `
+	SELECT a.id, a.project_id, a.title, a.status, a.priority, a.assignee_id,
+	a.due_date, a.last_reminder_at, u.email as assignee_email, p.name as project_name
+	FROM aufgaben a
+	JOIN users u ON u.id = a.assignee_id
+	JOIN projects p ON p.id = a.project_id
+	WHERE a.id = $1
+		AND a.status = 'In_Progress'
+		AND a.assignee_id IS NOT NULL
+		AND a.due_date IS NOT NULL
+		AND a.reminder_stage = 'None'
+		AND a.last_reminder_at IS NULL
+		AND now() >= a.due_date - INTERVAL '1 hour';
+	`
+
+	var row entity.ReminderAufgaben
+	if err := r.db.QueryRow(ctx, query, taskID).Scan(&row.ID, &row.ProjectID, &row.Title, &row.Status, &row.Priority, &row.AssigneeID, &row.DueDate, &row.LastReminderAt, &row.EmailAssignee, &row.ProjectName); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
+	}
+
+	return &row, nil
+}
+
+func (r *AufgabenRepo) ListShouldRemindOverdue(ctx context.Context) ([]entity.ReminderAufgaben, *app_errors.AppError) {
+	query := `
+	SELECT a.id, a.project_id, a.title, a.status, a.priority, a.assignee_id,
+	a.due_date, a.last_reminder_at, u.email as assignee_email, p.name as project_name
+	FROM aufgaben a
+	JOIN users u ON u.id = a.assignee_id
+	JOIN projects p ON p.id = a.project_id
+	WHERE a.status = 'In_Progress'
+		AND a.assignee_id IS NOT NULL
+		AND a.due_date IS NOT NULL
+		AND a.reminder_stage = 'Before_Due'
+		AND (
+			last_reminder_at IS NULL
+			OR now() >= last_reminder_at + INTERVAL '24 hours'
+		)
+		AND now() >= a.due_date;
+	`
+
+	var aufgaben []entity.ReminderAufgaben
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, app_errors.MapPgxError(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var aufgabe entity.ReminderAufgaben
+		if err := rows.Scan(&aufgabe.ID, &aufgabe.ProjectID, &aufgabe.Title, &aufgabe.Status, &aufgabe.Priority, &aufgabe.AssigneeID, &aufgabe.DueDate, &aufgabe.LastReminderAt, &aufgabe.EmailAssignee, &aufgabe.ProjectName); err != nil {
+			return nil, app_errors.MapPgxError(err)
+		}
+		aufgaben = append(aufgaben, aufgabe)
+	}
+
+	return aufgaben, nil
+}
+
+func (r *AufgabenRepo) BatchUpdateAufgabenReminderOverdue(ctx context.Context, tx pgx.Tx, taskIDs []string) *app_errors.AppError {
+	query := `
+	UPDATE aufgaben
+	SET reminder_stage = 'Overdue',
+		last_reminder_at = now()
+	WHERE id = $1 AND reminder_stage = 'Before_Due';
+	`
+
+	batch := &pgx.Batch{}
+
+	for _, taskID := range taskIDs {
+		batch.Queue(query, taskID)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+
+	err := br.Close()
+	if err != nil {
+		return app_errors.MapPgxError(err)
+	}
+
+	return nil
+}
+
+func (r *AufgabenRepo) UpdateAufgabeReminderBeforeDue(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError {
+	query := `
+	UPDATE aufgaben
+	SET reminder_stage = 'Before_Due',
+		last_reminder_at = now()
+	WHERE id = $1
+		AND reminder_stage = 'None';
+	`
+
+	if _, err := tx.Exec(ctx, query, taskID); err != nil {
+		return app_errors.MapPgxError(err)
+	}
+
+	return nil
+}
+
+func (r *AufgabenRepo) ListAssignedTasks(ctx context.Context, userID string, filter *aufgaben_dto.AssignedAufgabenFilter) ([]entity.AssignedAufgaben, *app_errors.AppError) {
+	query := `
+	SELECT a.id, p.name as project_name, a.title, a.description,
+	a.status, a.priority, a.due_date
+	FROM aufgaben a
+	JOIN projects p ON p.id = a.project_id
+	WHERE a.assignee_id = $1
+		AND a.deleted_at IS NULL
+	AND (
+		$2::aufgaben_status IS NULL OR a.status = $2
+	)
+	AND (
+		$3::aufgaben_priority IS NULL OR a.priority = $3
+	)
+	AND (
+		$4::uuid IS NULL OR a.project_id = $4
+	)
+	AND (
+		$5::uuid IS NULL OR a.id < $5)
+	ORDER BY a.due_date ASC, a.id ASC
+	LIMIT $6 + 1;
+	`
+
+	var aufgaben []entity.AssignedAufgaben
+	rows, err := r.db.Query(ctx, query, userID, filter.Status, filter.Priority, filter.ProjectID, filter.Cursor, filter.Limit)
+	if err != nil {
+		return nil, app_errors.MapPgxError(err)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var aufgabe entity.AssignedAufgaben
+		if err := rows.Scan(&aufgabe.ID, &aufgabe.ProjectName, &aufgabe.Title, &aufgabe.Description, &aufgabe.Status, &aufgabe.Priority, &aufgabe.DueDate); err != nil {
+			return nil, app_errors.MapPgxError(err)
+		}
+
+		aufgaben = append(aufgaben, aufgabe)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, app_errors.MapPgxError(err)
+	}
+
+	return aufgaben, nil
 }

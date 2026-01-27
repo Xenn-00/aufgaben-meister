@@ -60,11 +60,11 @@ type RevokeProjectMemberResponse struct {
 	RevokedUsers []RevokedUser `json:"revoked_users"`
 }
 
-type ListInvitationsResponse struct {
-	Data       []*InvitationsInProjectResponse `json:"data"`
-	NextCursor *time.Time                      `json:"next_cursor"`
-	HasMore    bool                            `json:"has_more"`
-}
+// type ListInvitationsResponse struct {
+// 	Data       []*InvitationsInProjectResponse `json:"data"`
+// 	NextCursor *time.Time                      `json:"next_cursor"`
+// 	HasMore    bool                            `json:"has_more"`
+// }
 
 type InvitationsInProjectResponse struct {
 	InvitationID string    `json:"invitation_id"`

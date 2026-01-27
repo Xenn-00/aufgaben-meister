@@ -16,6 +16,12 @@ type PaginationMeta struct {
 	TotalPages int `json:"total_pages"`
 }
 
+type CursorPaginationMeta struct {
+	Limit      int  `json:"limit"`
+	NextCursor any  `json:"next_cursor,omitempty"`
+	HasMore    bool `json:"has_more"`
+}
+
 // ErrorResponse repräsentiert eine standardisierte Fehlerantwort.
 type ErrorResponse struct {
 	Code    int    `json:"code"`

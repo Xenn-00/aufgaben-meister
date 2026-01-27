@@ -16,4 +16,5 @@ type AufgabenServiceContract interface {
 	UnassignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.UnassignAufgabenRequest) (*aufgaben_dto.UnassignAufgabenResponse, *app_errors.AppError)
 	ForceUnassignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.ForceUnassignAufgabenRequest) (*aufgaben_dto.UnassignAufgabenResponse, *app_errors.AppError)
 	ReassignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.ReassignAufgabenRequest) (*aufgaben_dto.ReassignAufgabenResponse, *app_errors.AppError)
+	ListAssignedTasks(ctx context.Context, userID string, filter *aufgaben_dto.AssignedAufgabenFilter) ([]*aufgaben_dto.AssignedAufgabenListItem, *dtos.CursorPaginationMeta, *app_errors.AppError)
 }

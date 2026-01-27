@@ -24,6 +24,16 @@ type AufgabenListItem struct {
 	DueDate     *time.Time `json:"due_date,omitempty"`
 }
 
+type AssignedAufgabenListItem struct {
+	AufgabenID  string    `json:"aufgaben_id"`
+	ProjectName string    `json:"project_name"`
+	Title       string    `json:"title"`
+	Description *string   `json:"description,omitempty"`
+	Status      string    `json:"status"`
+	Priority    string    `json:"priority"`
+	DueDate     time.Time `json:"due_date"`
+}
+
 type AufgabenAssignResponse struct {
 	AufgabenID string    `json:"aufgaben_id"`
 	ProjectID  string    `json:"project_id"`

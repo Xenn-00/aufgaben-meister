@@ -3,6 +3,7 @@ package project_case
 import (
 	"context"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/dtos"
 	project_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/project-dto"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 )
@@ -17,5 +18,5 @@ type ProjectServiceContract interface {
 	RejectProjectInvitation(ctx context.Context, invitationID, userID string) (*project_dto.RejectProjectInvitationResponse, *app_errors.AppError)
 	RevokeProjectInvitations(ctx context.Context, projectID, userID string, req *project_dto.RevokeProjectMemberRequest) (*project_dto.RevokeProjectMemberResponse, *app_errors.AppError)
 	ResendProjectInvitations(ctx context.Context, invitationID, userID string) *app_errors.AppError
-	GetInvitationsInProject(ctx context.Context, projectID, userID string, filters project_dto.FilterProjectInvitation) (*project_dto.ListInvitationsResponse, *app_errors.AppError)
+	GetInvitationsInProject(ctx context.Context, projectID, userID string, filters project_dto.FilterProjectInvitation) ([]*project_dto.InvitationsInProjectResponse, *dtos.CursorPaginationMeta, *app_errors.AppError)
 }

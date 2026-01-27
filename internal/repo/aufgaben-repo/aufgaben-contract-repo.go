@@ -21,4 +21,9 @@ type AufgabenRepoContract interface {
 	ForwardProgress(ctx context.Context, tx pgx.Tx, taskID string) (*entity.CompleteTaskEntity, *app_errors.AppError)
 	InsertAssignmentEvent(ctx context.Context, tx pgx.Tx, event *entity.AddAssignment) *app_errors.AppError
 	UnassignTask(ctx context.Context, tx pgx.Tx, rollbackModel *entity.UnassignTaskEntity) (entity.AufgabenStatus, *app_errors.AppError)
+	ShouldRemind(ctx context.Context, taskID string) (*entity.ReminderAufgaben, *app_errors.AppError)
+	UpdateAufgabeReminderBeforeDue(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError
+	ListShouldRemindOverdue(ctx context.Context) ([]entity.ReminderAufgaben, *app_errors.AppError)
+	BatchUpdateAufgabenReminderOverdue(ctx context.Context, tx pgx.Tx, taskIDs []string) *app_errors.AppError
+	ListAssignedTasks(ctx context.Context, userID string, filter *aufgaben_dto.AssignedAufgabenFilter) ([]entity.AssignedAufgaben, *app_errors.AppError)
 }
