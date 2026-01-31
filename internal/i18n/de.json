@@ -87,6 +87,58 @@
     "translation": "Alle Einladungen für ein Projekt wurden erfolgreich abgerufen."
   },
   {
+    "id": "response.success_insert_new_aufgabe",
+    "translation": "Neue Aufgabe wurde erfolgreich erstellt."
+  },
+  {
+    "id": "response.success_list_aufgaben",
+    "translation": "Aufgaben wurden erfolgreich geladen."
+  },
+  {
+    "id": "response.success_assign_task",
+    "translation": "Aufgabe wurde erfolgreich zugewiesen."
+  },
+  {
+    "id": "response.success_get_aufgabe_details",
+    "translation": "Aufgabendetails wurden erfolgreich geladen."
+  },
+  {
+    "id": "response.success_forward_progress",
+    "translation": "Aufgabenfortschritt wurde erfolgreich aktualisiert."
+  },
+  {
+    "id": "response.success_unassign_task",
+    "translation": "Zuweisung der Aufgabe wurde erfolgreich aufgehoben."
+  },
+  {
+    "id": "response.success_force_unassign_task",
+    "translation": "Zuweisung wurde erfolgreich zwangsweise aufgehoben."
+  },
+  {
+    "id": "response.success_reassign_task",
+    "translation": "Aufgabe wurde erfolgreich neu zugewiesen."
+  },
+  {
+    "id": "response.success_list_assigned_tasks",
+    "translation": "Zugewiesene Aufgaben wurden erfolgreich geladen."
+  },
+  {
+    "id": "response.success_archive_task",
+    "translation": "Aufgabe wurde erfolgreich archiviert."
+  },
+  {
+    "id": "response.success_update_due_date",
+    "translation": "Fälligkeitsdatum wurde erfolgreich aktualisiert."
+  },
+  {
+    "id": "response.success_fetch_events",
+    "translation": "Aufgaben-Ereignisse wurden erfolgreich geladen."
+  },
+  {
+    "id": "response.success_force_handover",
+    "translation": "Aufgabenübergabe wurde erfolgreich erzwungen."
+  },
+  {
     "id": "response.write_failed",
     "translation": "Antwort konnte nicht geschrieben werden"
   },
@@ -94,6 +146,22 @@
   { "id": "project_not_found", "translation": "Projekt nicht gefunden" },
   { "id": "auth.unauthorized", "translation": "Nicht autorisiert" },
   { "id": "conflict", "translation": "Konflikt aufgetreten" },
+  {
+    "id": "conflict.task_unavailable",
+    "translation": "Aufgabe ist zur Ausführung nicht verfügbar."
+  },
+  {
+    "id": "conflict.task_is_archive_or_done",
+    "translation": "Aktion nicht möglich: Aufgabe ist bereits archiviert oder abgeschlossen."
+  },
+  {
+    "id": "conflict.task_already_assigned_to_someone",
+    "translation": "Konflikt: Aufgabe ist bereits jemand anderem zugewiesen."
+  },
+  {
+    "id": "forbidden.not_task_assignee",
+    "translation": "Zugriff verweigert: Sie sind nicht der zuständige Bearbeiter dieser Aufgabe."
+  },
   { "id": "forbidden", "translation": "Zugriff verweigert" },
   { "id": "internal_error", "translation": "Interner Serverfehler" },
   {

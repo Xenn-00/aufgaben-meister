@@ -26,4 +26,7 @@ type AufgabenRepoContract interface {
 	ListShouldRemindOverdue(ctx context.Context) ([]entity.ReminderAufgaben, *app_errors.AppError)
 	BatchUpdateAufgabenReminderOverdue(ctx context.Context, tx pgx.Tx, taskIDs []string) *app_errors.AppError
 	ListAssignedTasks(ctx context.Context, userID string, filter *aufgaben_dto.AssignedAufgabenFilter) ([]entity.AssignedAufgaben, *app_errors.AppError)
+	ArchiveTask(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError
+	UpdateDueDate(ctx context.Context, tx pgx.Tx, taskID string, dueDate time.Time) (*time.Time, *app_errors.AppError)
+	ListEventsForTask(ctx context.Context, taskID string, filters *aufgaben_dto.AufgabenEventFilter) ([]entity.AssignmentEventEntity, *app_errors.AppError)
 }

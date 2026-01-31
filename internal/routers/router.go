@@ -20,6 +20,6 @@ func SetupRoutes(app *fiber.App, db *pgxpool.Pool, redis *redis.Client, i18n *i1
 	AuthRouter(api, db, redis, i18n, paseto)
 	UserRouter(api, db, redis, i18n, paseto)
 	ProjectRouter(api, db, redis, i18n, paseto, cfgStorage)
-	AufgabenRouter(api, db, redis, i18n, paseto)
+	AufgabenRouter(api, db, redis, i18n, paseto, cfgStorage)
 	HealthRouter(api, db, redis)
 }

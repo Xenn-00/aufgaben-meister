@@ -37,6 +37,7 @@ func (q *TaskQueue) EnqueueSendProjectProgressReminder(payload *worker_task.Send
 	_, err := q.client.Enqueue(task)
 	return err
 }
+
 func (q *TaskQueue) EnqueueHandoverRequestNotifyMeister(payload *worker_task.HandoverRequestNotifyMeister) error {
 	log.Info().Msg("Preparing enqueueing payload.")
 	p, _ := json.Marshal(payload)

@@ -30,6 +30,11 @@ type AssignedAufgabenFilter struct {
 	Cursor    *string `query:"cursor,omitempty" validate:"omitempty,uuid"`
 }
 
+type AufgabenEventFilter struct {
+	Limit  int     `query:"limit,omitempty" validate:"omitempty,min=1,max=100"`
+	Cursor *string `query:"cursor,omitempty" validate:"omitempty,uuid"`
+}
+
 type ParamTaskID struct {
 	ID string `params:"task_id" validate:"required,uuid"`
 }
@@ -55,11 +60,27 @@ type ForceUnassignAufgabenRequest struct {
 	Reason     string  `json:"reason" validate:"required"`
 }
 
+type ForceAufgabeHandoverRequest struct {
+	TargetID   string `json:"target_id" validate:"required,uuid"`
+	Note       string `json:"note,omitempty" validate:"omitempty,min=3"`
+	ReasonCode string `json:"reason_code" validate:"required,reasonCode"`
+	Reason     string `json:"reason" validate:"required"`
+}
+
 type ReassignAufgabenRequest struct {
 	TargetID   string  `json:"target_id" validate:"required,uuid"`
 	Note       string  `json:"note" validate:"required"`
 	Reason     *string `json:"reason,omitempty" validate:"omitempty,min=3"`
 	ReasonCode *string `json:"reason_code,omitempty" validate:"omitempty,reasonCode"`
+}
+
+type UpdateDueDateRequest struct {
+	DueDate time.Time `json:"due_date" validate:"required,dateInFuture"`
+}
+
+func IsDateInFuture(fl validator.FieldLevel) bool {
+	v := fl.Field().Interface().(time.Time)
+	return v.After(time.Now())
 }
 
 func IsValidReasonCode(fl validator.FieldLevel) bool {

@@ -45,6 +45,12 @@ func RegisterCronJobs(s *asynq.Scheduler) error {
 			queue: "low",
 			desc:  "send task overdue reminder",
 		},
+		{
+			spec:  "*/10 * * * *",
+			task:  asynq.NewTask(worker_task.TaskSendProjectProgressReminder, nil),
+			queue: "low",
+			desc:  "send task progress reminder",
+		},
 	}
 
 	for _, job := range jobs {

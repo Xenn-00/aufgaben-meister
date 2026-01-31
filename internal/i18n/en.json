@@ -84,11 +84,79 @@
     "id": "response.success_fetch_invitation_in_project",
     "translation": "Successfully fetch all invitation for a project."
   },
+  {
+    "id": "response.success_insert_new_aufgabe",
+    "translation": "Successfully insert new task."
+  },
+  {
+    "id": "response.success_list_aufgaben",
+    "translation": "Successfully list tasks."
+  },
+  {
+    "id": "response.success_assign_task",
+    "translation": "Successfully assign task."
+  },
+  {
+    "id": "response.success_get_aufgabe_details",
+    "translation": "Successfully get task details."
+  },
+  {
+    "id": "response.success_forward_progress",
+    "translation": "Successfully forward task progress."
+  },
+  {
+    "id": "response.success_unassign_task",
+    "translation": "Successfully unassign task."
+  },
+  {
+    "id": "response.success_force_unassign_task",
+    "translation": "Successfully unassign task forcibly."
+  },
+  {
+    "id": "response.success_reassign_task",
+    "translation": "Successfully reassign task."
+  },
+  {
+    "id": "response.success_list_assigned_tasks",
+    "translation": "Successfully list assigned tasks."
+  },
+  {
+    "id": "response.success_archive_task",
+    "translation": "Successfully archive task."
+  },
+  {
+    "id": "response.success_update_due_date",
+    "translation": "Successfully update task due date."
+  },
+  {
+    "id": "response.success_fetch_events",
+    "translation": "Successfully fetch task events."
+  },
+  {
+    "id": "response.success_force_handover",
+    "translation": "Successfully handover task forcibly."
+  },
   { "id": "response.write_failed", "translation": "Unable to write response" },
   { "id": "user_not_found", "translation": "User not found" },
   { "id": "project_not_found", "translation": "Project not found" },
   { "id": "auth.unauthorized", "translation": "Unauthorized" },
   { "id": "conflict", "translation": "Conflict occured" },
+  {
+    "id": "conflict.task_unavailable",
+    "translation": "Task is unavailable to be performed."
+  },
+  {
+    "id": "conflict.task_is_archive_or_done",
+    "translation": "Task status is Archive or Done."
+  },
+  {
+    "id": "conflict.task_already_Assigned_to_someone",
+    "translation": "Task is already assigned to someone."
+  },
+  {
+    "id": "forbidden.not_task_assignee",
+    "translation": "Forbidden to continue because because not a task assignee."
+  },
   { "id": "forbidden", "translation": "Access forbidden" },
   { "id": "internal_error", "translation": "Internal server error" },
   { "id": "validation.required", "translation": "This field is required" },

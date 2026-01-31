@@ -66,7 +66,7 @@ func (r *AufgabenRepo) GetTaskByID(ctx context.Context, taskID string) (*entity.
 	`
 
 	var row entity.AufgabenEntity
-	if err := r.db.QueryRow(ctx, query, taskID).Scan(&row.ID, &row.ProjectID, &row.Title, &row.Description, &row.Status, &row.Priority, &row.AssigneeID, &row.CreatedBy, &row.DueDate, &row.CreatedAt, &row.UpdatedAt, &row.DeletedAt, &row.CompletedAt, &row.ProjectName); err != nil {
+	if err := r.db.QueryRow(ctx, query, taskID).Scan(&row.ID, &row.ProjectID, &row.Title, &row.Description, &row.Status, &row.Priority, &row.AssigneeID, &row.CreatedBy, &row.DueDate, &row.CreatedAt, &row.UpdatedAt, &row.ArchivedAt, &row.CompletedAt, &row.ProjectName); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "task_not_found", nil)
 		}
@@ -120,7 +120,7 @@ func (r *AufgabenRepo) CountTasks(ctx context.Context, projectID string) (int64,
 	FROM aufgaben
 	WHERE project_id = $1
 		AND status != 'Archived'
-		AND deleted_at = NULL;
+		AND archived_at = NULL;
 	`
 	var count int64
 	if err := r.db.QueryRow(ctx, query, projectID).Scan(&count); err != nil {
@@ -138,7 +138,7 @@ func (r *AufgabenRepo) ListTasks(ctx context.Context, projectID string, filter *
 	SELECT a.*, p.name FROM aufgaben a
 	JOIN projects p ON p.id = a.project_id
 	WHERE project_id = $1
-		AND deleted_at IS NULL
+		AND archived_at IS NULL
 	`
 
 	args := []any{projectID}
@@ -176,7 +176,7 @@ func (r *AufgabenRepo) ListTasks(ctx context.Context, projectID string, filter *
 	var results []entity.AufgabenEntity
 	for rows.Next() {
 		var result entity.AufgabenEntity
-		if err := rows.Scan(&result.ID, &result.ProjectID, &result.Title, &result.Description, &result.Status, &result.Priority, &result.AssigneeID, &result.CreatedBy, &result.DueDate, &result.CreatedAt, &result.UpdatedAt, &result.DeletedAt, &result.CompletedAt, &result.ProjectName); err != nil {
+		if err := rows.Scan(&result.ID, &result.ProjectID, &result.Title, &result.Description, &result.Status, &result.Priority, &result.AssigneeID, &result.CreatedBy, &result.DueDate, &result.CreatedAt, &result.UpdatedAt, &result.ArchivedAt, &result.CompletedAt, &result.ProjectName); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 			}
@@ -379,7 +379,7 @@ func (r *AufgabenRepo) ListAssignedTasks(ctx context.Context, userID string, fil
 	FROM aufgaben a
 	JOIN projects p ON p.id = a.project_id
 	WHERE a.assignee_id = $1
-		AND a.deleted_at IS NULL
+		AND a.archived_at IS NULL
 	AND (
 		$2::aufgaben_status IS NULL OR a.status = $2
 	)
@@ -417,4 +417,69 @@ func (r *AufgabenRepo) ListAssignedTasks(ctx context.Context, userID string, fil
 	}
 
 	return aufgaben, nil
+}
+
+func (r *AufgabenRepo) ArchiveTask(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError {
+	query := `
+	UPDATE aufgaben
+	SET status = 'Archived',
+		archived_at = now(),
+		updated_at = now()
+	WHERE id = $1;
+	`
+
+	if _, err := tx.Exec(ctx, query, taskID); err != nil {
+		return app_errors.MapPgxError(err)
+	}
+	return nil
+}
+
+func (r *AufgabenRepo) UpdateDueDate(ctx context.Context, tx pgx.Tx, taskID string, dueDate time.Time) (*time.Time, *app_errors.AppError) {
+	query := `
+	UPDATE aufgaben
+	SET due_date = $2,
+		reminder_stage = 'None',
+		last_reminder_at = NULL,
+		updated_at = now()
+	WHERE id = $1
+		AND due_date IS DISTINCT FROM $2
+	RETURNING due_date;
+	`
+
+	var updatedDueDate time.Time
+	if err := tx.QueryRow(ctx, query, taskID, dueDate).Scan(&updatedDueDate); err != nil {
+		return nil, app_errors.MapPgxError(err)
+	}
+
+	return &updatedDueDate, nil
+}
+
+func (r *AufgabenRepo) ListEventsForTask(ctx context.Context, taskID string, filters *aufgaben_dto.AufgabenEventFilter) ([]entity.AssignmentEventEntity, *app_errors.AppError) {
+	query := `
+	SELECT id, aufgaben_id, actor_id, target_assignee_id, action, note, reason_code, reason_text, created_at
+	FROM aufgaben_assignment_events
+	WHERE aufgaben_id = $1
+		AND (
+		$2::uuid IS NULL OR id < $2
+		)
+		ORDER BY created_at DESC, id DESC
+		LIMIT $3 + 1;
+	`
+
+	var events []entity.AssignmentEventEntity
+	rows, err := r.db.Query(ctx, query, taskID, filters.Cursor, filters.Limit)
+
+	if err != nil {
+		return nil, app_errors.MapPgxError(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var event entity.AssignmentEventEntity
+		if err := rows.Scan(&event.ID, &event.AufgabenID, &event.ActorID, &event.TargetAssigneeID, &event.Action, &event.Note, &event.ReasonCode, &event.ReasonText, &event.CreatedAt); err != nil {
+			return nil, app_errors.MapPgxError(err)
+		}
+	}
+
+	return events, nil
 }

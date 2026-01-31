@@ -15,7 +15,7 @@ type AufgabenEntity struct {
 	DueDate     *time.Time       `json:"due_date,omitempty"`
 	CreatedAt   time.Time        `json:"created_at"`
 	UpdatedAt   *time.Time       `json:"updated_at,omitempty"`
-	DeletedAt   *time.Time       `json:"deleted_at,omitempty"`
+	ArchivedAt  *time.Time       `json:"archived_at,omitempty"`
 	CompletedAt *time.Time       `json:"completed_at,omitempty"`
 }
 
@@ -86,6 +86,8 @@ type AddAssignment struct {
 	Note             *string         `json:"note,omitempty"`
 	ReasonText       *string         `json:"reason_text,omitempty"`
 	ReasonCode       ReasonCodeEvent `json:"reason_code,omitempty"`
+	TaskArchivedAt   *time.Time      `json:"task_archived_at,omitempty"`
+	ArchivedBy       *string         `json:"archived_by,omitempty"`
 }
 
 type ActionEvent string
@@ -97,6 +99,8 @@ const (
 	ActionComplete        ActionEvent = "Complete"
 	ActionHandoverRequest ActionEvent = "Handover_Request"
 	ActionHandoverExecute ActionEvent = "Handover_Execute"
+	ActionArchive         ActionEvent = "Task_Archived"
+	ActionDueDateUpdate   ActionEvent = "Due_Date_Updated"
 )
 
 type ReasonCodeEvent string

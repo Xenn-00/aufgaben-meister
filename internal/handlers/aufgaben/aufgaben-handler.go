@@ -25,6 +25,7 @@ func NewAufgabenHandler(db *pgxpool.Pool, redis *redis.Client, i18n *internal_i1
 	validate.RegisterValidation("aufgabenPriority", aufgaben_dto.IsValidAufgabenPriority)
 	validate.RegisterValidation("aufgabenStatus", aufgaben_dto.IsValidAufgabenStatus)
 	validate.RegisterValidation("reasonCode", aufgaben_dto.IsValidReasonCode)
+	validate.RegisterValidation("dateInFuture", aufgaben_dto.IsDateInFuture)
 	return &AufgabenHandler{
 		validator: validate,
 		service:   aufgaben_case.NewAufgabenService(db, redis),
@@ -67,7 +68,7 @@ func (h *AufgabenHandler) CreateNewAufgaben(c *fiber.Ctx) error {
 
 	reqID := handlers.GetRequestID(c)
 	lang, _ := c.Locals("lang").(string)
-	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_insert_new_aufgaben", nil), resp, reqID)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_insert_new_aufgabe", nil), resp, reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
@@ -168,6 +169,40 @@ func (h *AufgabenHandler) AssignTask(c *fiber.Ctx) error {
 	reqID := handlers.GetRequestID(c)
 	lang, _ := c.Locals("lang").(string)
 	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_assign_task", nil), resp, reqID)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}
+
+func (h *AufgabenHandler) GetAufgabeDetails(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get project id param
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get task id param
+	taskID, err := handlers.GetParamTaskID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// call service
+	resp, err := h.service.GetAufgabeDetails(c.Context(), userID, projectID, taskID)
+	if err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_get_aufgabe_details", nil), resp, reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
@@ -300,7 +335,7 @@ func (h *AufgabenHandler) ForceUnassignTask(c *fiber.Ctx) error {
 
 	reqID := handlers.GetRequestID(c)
 	lang, _ := c.Locals("lang").(string)
-	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_unassign_task", nil), resp, reqID)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_force_unassign_task", nil), resp, reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}
@@ -391,6 +426,171 @@ func (h *AufgabenHandler) ListAssignedTasks(c *fiber.Ctx) error {
 	reqID := handlers.GetRequestID(c)
 	lang, _ := c.Locals("lang").(string)
 	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_list_assigned_task", nil), resp, reqID, cursor)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}
+
+func (h *AufgabenHandler) ArchiveTask(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get project id param
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get task id param
+	taskID, err := handlers.GetParamTaskID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// call service
+	if err := h.service.ArchiveTask(c.Context(), userID, projectID, taskID); err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_archive_task", nil), "OK", reqID)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}
+
+func (h *AufgabenHandler) UpdateDueDate(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get project id param
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get task id param
+	taskID, err := handlers.GetParamTaskID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get req body
+	var req *aufgaben_dto.UpdateDueDateRequest
+	if err := c.BodyParser(&req); err != nil {
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidBody, "request.invalid_body", err)
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	}
+
+	// call service
+	resp, err := h.service.UpdateDueDate(c.Context(), userID, projectID, taskID, req)
+	if err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_update_due_date", nil), resp, reqID)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}
+
+func (h *AufgabenHandler) FetchEventsForTask(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get project id param
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get task id param
+	taskID, err := handlers.GetParamTaskID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get query filter
+	var filters aufgaben_dto.AufgabenEventFilter
+	if err := c.QueryParser(&filters); err != nil {
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidQuery, "request.invalid_query", err)
+	}
+
+	if err := h.validator.Struct(filters); err != nil {
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	}
+
+	// call service
+	events, cursor, err := h.service.FetchEventsForTask(c.Context(), userID, projectID, taskID, &filters)
+	if err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_fetch_events", nil), events, reqID, cursor)
+	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
+		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
+	}
+
+	return nil
+}
+
+func (h *AufgabenHandler) ForceAufgabeHandover(c *fiber.Ctx) error {
+	userID, err := handlers.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	// get project id param
+	projectID, err := handlers.GetParamProjectID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get task id param
+	taskID, err := handlers.GetParamTaskID(c, h.validator)
+	if err != nil {
+		return err
+	}
+
+	// get req body
+	var req *aufgaben_dto.ForceAufgabeHandoverRequest
+	if err := c.BodyParser(&req); err != nil {
+		return app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidBody, "request.invalid_body", err)
+	}
+
+	if err := h.validator.Struct(req); err != nil {
+		return app_errors.NewValidationError(app_errors.ParseValidationError(err))
+	}
+
+	// call service
+	resp, err := h.service.ForceAufgabeHandover(c.Context(), userID, projectID, taskID, req)
+	if err != nil {
+		return err
+	}
+
+	reqID := handlers.GetRequestID(c)
+	lang, _ := c.Locals("lang").(string)
+	webResp := handlers.CreateResponse(h.i18n.T(lang, "response.success_force_handover", nil), resp, reqID)
 	if err := c.Status(fiber.StatusOK).JSON(webResp); err != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "response.write_failed", err)
 	}

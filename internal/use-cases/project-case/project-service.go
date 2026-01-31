@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/Xenn-00/aufgaben-meister/internal/queue"
 	project_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/project-repo"
+	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -133,6 +135,14 @@ func (s *ProjectService) GetProjectDetail(ctx context.Context, projectID, userID
 		return nil, err
 	}
 
+	// Check cache
+	// Why don't we cache by user_id + project_id? because the response gonna differ based on user role
+	cacheKey := fmt.Sprintf("project:details:%s:%s", projectID, role)
+	cacheData, cacheErr := utils.GetCacheData[project_dto.GetProjectDetailResponse](ctx, s.redis, cacheKey)
+	if cacheData != nil && cacheErr == nil {
+		return cacheData, nil
+	}
+
 	// Get project
 	project, err := s.repo.GetProjectByID(ctx, projectID)
 	if err != nil {
@@ -156,6 +166,12 @@ func (s *ProjectService) GetProjectDetail(ctx context.Context, projectID, userID
 		}
 		resp.MasterID = &project.MasterID
 		resp.Members = res
+	}
+
+	// Set cache
+	if err := utils.SetCacheData(ctx, s.redis, cacheKey, resp, 5*time.Minute); err != nil {
+		log.Error().Err(err.Err).Msg("Fehler beim Setzen des Redis-Cache")
+		return nil, err
 	}
 
 	return resp, nil

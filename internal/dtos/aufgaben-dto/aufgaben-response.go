@@ -14,7 +14,7 @@ type CreateNewAufgabenResponse struct {
 	DueDate     *time.Time `json:"due_date,omitempty"`
 }
 
-type AufgabenListItem struct {
+type AufgabenItem struct {
 	AufgabenID  string     `json:"aufgaben_id"`
 	Title       string     `json:"title"`
 	Description *string    `json:"description,omitempty"`
@@ -67,4 +67,21 @@ type ReassignAufgabenResponse struct {
 	Note          string `json:"note"`
 	Action        string `json:"action"`
 	Reason        string `json:"reason,omitempty"`
+}
+
+type UpdateDueDateResponse struct {
+	AufgabenID string    `json:"aufgaben_id"`
+	DueDate    time.Time `json:"due_date"`
+}
+
+type AufgabenEventItem struct {
+	EventID     string    `json:"event_id"`
+	AufgabeID   string    `json:"aufgabe_id"`
+	ActorID     string    `json:"actor_id"`
+	EventAction string    `json:"event_action"`
+	Note        *string   `json:"note,omitempty"`
+	TargetID    *string   `json:"target_id,omitempty"`
+	ReasonCode  *string   `json:"reason_code,omitempty"`
+	ReasonText  *string   `json:"reason_text,omitempty"`
+	EventTime   time.Time `json:"event_time"`
 }
