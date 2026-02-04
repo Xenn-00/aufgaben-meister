@@ -6,33 +6,33 @@ import (
 	"math"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/cache"
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	"github.com/Xenn-00/aufgaben-meister/internal/dtos"
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/Xenn-00/aufgaben-meister/internal/queue"
 	aufgaben_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/aufgaben-repo"
-	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
 type AufgabenService struct {
-	redis     *redis.Client
-	db        *pgxpool.Pool
+	cache     cache.Cache
+	txManager tx.TxManager
 	repo      aufgaben_repo.AufgabenRepoContract
-	taskQueue *queue.TaskQueue
+	taskQueue queue.TaskQueueClient
 }
 
 func NewAufgabenService(db *pgxpool.Pool, redis *redis.Client) AufgabenServiceContract {
 	return &AufgabenService{
-		redis:     redis,
-		db:        db,
+		cache:     cache.NewRedisCache(redis),
+		txManager: tx.NewPgxTxManager(db),
 		repo:      aufgaben_repo.NewAufgabenRepo(db),
 		taskQueue: queue.NewTaskQueue(redis),
 	}
@@ -41,24 +41,15 @@ func NewAufgabenService(db *pgxpool.Pool, redis *redis.Client) AufgabenServiceCo
 func (s *AufgabenService) CreateNewAufgaben(ctx context.Context, userID, projectID string, req *aufgaben_dto.CreateNewAufgabenRequest) (*aufgaben_dto.CreateNewAufgabenResponse, *app_errors.AppError) {
 	// TODO
 	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyProjectMember(ctx, projectID, userID); err != nil {
 		return nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
 	// Check request validity
 	var assigneeID *string
 	if req.AssigneeID != nil {
-		member, err := s.repo.CheckProjectMember(ctx, projectID, *req.AssigneeID)
-		if err != nil {
+		if err := s.verifyProjectMember(ctx, projectID, *req.AssigneeID); err != nil {
 			return nil, err
-		}
-		if member == false {
-			return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 		}
 		assigneeID = req.AssigneeID
 	}
@@ -110,25 +101,18 @@ func (s *AufgabenService) CreateNewAufgaben(ctx context.Context, userID, project
 
 func (s *AufgabenService) ListTasksProject(ctx context.Context, userID, projectID string, filter aufgaben_dto.AufgabenListFilter) ([]*aufgaben_dto.AufgabenItem, *dtos.PaginationMeta, *app_errors.AppError) {
 	// TODO
-	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
+	// Check if user is really project member or not, doesn't care about user role
+	if err := s.verifyProjectMember(ctx, projectID, userID); err != nil {
 		return nil, nil, err
 	}
 
-	if isProjectMember == false {
-		return nil, nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
 	// Check filter validity
 	if filter.AssigneeID != nil {
-		member, err := s.repo.CheckProjectMember(ctx, projectID, *filter.AssigneeID)
-		if err != nil {
+		if err := s.verifyProjectMember(ctx, projectID, *filter.AssigneeID); err != nil {
 			return nil, nil, err
 		}
-		if member == false {
-			return nil, nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-		}
 	}
+
 	// Call repo
 	tasks, err := s.repo.ListTasks(ctx, projectID, &filter)
 	if err != nil {
@@ -154,8 +138,6 @@ func (s *AufgabenService) ListTasksProject(ctx context.Context, userID, projectI
 		})
 	}
 
-	log.Info().Msgf("responses: %v", responses)
-
 	totalPages := int(math.Ceil(float64(totalTasks) / float64(filter.Limit)))
 
 	paginationMeta := &dtos.PaginationMeta{
@@ -170,39 +152,26 @@ func (s *AufgabenService) ListTasksProject(ctx context.Context, userID, projectI
 
 func (s *AufgabenService) AssignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.AufgabenAssignRequest) (*aufgaben_dto.AufgabenAssignResponse, *app_errors.AppError) {
 	// TODO
-	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
+	// Check if user is really project member or not, doesn't care about user role, returning task
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "confict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
 	// Check if task is already assigned to someone
 	if task.AssigneeID != nil {
 		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_already_assigned_to_someone", nil)
 	}
-	// Check if req.due_date valid (req.due_date should > now())
-	if !req.DueDate.After(time.Now()) {
+	// Check if req.due_date valid (req.due_date should > now() + 1 hour)
+	if !req.DueDate.After(time.Now().Add(1 * time.Hour)) {
 		return nil, app_errors.NewAppError(fiber.StatusBadRequest, app_errors.ErrInvalidBody, "request.invalid_body", fmt.Errorf("Due date must be in the future"))
 	}
 
 	// Prepare transaction to update task
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
@@ -212,20 +181,15 @@ func (s *AufgabenService) AssignTask(ctx context.Context, userID, projectID, tas
 		return nil, err
 	}
 
-	idEvent, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
 	note := fmt.Sprintf("First assignment by: %s", assigned.AssigneeID)
 	assignEvent := &entity.AddAssignment{
-		ID:         idEvent.String(),
 		AufgabenID: assigned.ID,
 		ActorID:    assigned.AssigneeID,
 		Action:     entity.ActionAssign,
 		Note:       &note,
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, assignEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, assignEvent); err != nil {
 		return nil, err
 	}
 
@@ -248,23 +212,24 @@ func (s *AufgabenService) AssignTask(ctx context.Context, userID, projectID, tas
 
 func (s *AufgabenService) GetAufgabeDetails(ctx context.Context, userID, projectID, taskID string) (*aufgaben_dto.AufgabenItem, *app_errors.AppError) {
 	// TODO
-	// Check cache first
-	cacheKey := fmt.Sprintf("aufgaben:details:%s", taskID)
-	cacheData, cacheErr := utils.GetCacheData[aufgaben_dto.AufgabenItem](ctx, s.redis, cacheKey)
-	if cacheData != nil && cacheErr == nil {
-		return cacheData, nil
-	}
-
-	// Cache miss, fetch from DB
 	// Check if performer is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyProjectMember(ctx, projectID, userID); err != nil {
 		return nil, err
 	}
 
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
+	// Check cache
+	cacheKey := fmt.Sprintf("aufgaben:details:%s", taskID)
+	cacheData, cacheErr := s.cache.Get(ctx, cacheKey)
+	if cacheData != nil && cacheErr == nil {
+		// cache.Get returns *any, so dereference and type assert to the expected type
+		if cached, ok := (*cacheData).(*aufgaben_dto.AufgabenItem); ok && cached != nil {
+			return cached, nil
+		}
+		// If cached data has unexpected type, log and continue to fetch from DB
+		log.Warn().Msgf("unexpected cache type for key %s", cacheKey)
 	}
+
+	// Cache miss, fetch from DB
 
 	// Check if task exists
 	task, err := s.repo.GetTaskByID(ctx, taskID)
@@ -284,7 +249,7 @@ func (s *AufgabenService) GetAufgabeDetails(ctx context.Context, userID, project
 	}
 
 	// cache task details in redis
-	if err := utils.SetCacheData(ctx, s.redis, cacheKey, resp, 5*time.Minute); err != nil {
+	if err := s.cache.Set(ctx, cacheKey, resp, 5*time.Minute); err != nil {
 		log.Error().Err(err.Err).Msg("Fehler beim Setzen des Redis-Cache")
 		return nil, err
 	}
@@ -294,39 +259,24 @@ func (s *AufgabenService) GetAufgabeDetails(ctx context.Context, userID, project
 
 func (s *AufgabenService) ForwardProgressTask(ctx context.Context, userID, projectID, taskID string) (*aufgaben_dto.AufgabenForwardProgressResponse, *app_errors.AppError) {
 	// TODO
-	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
+	// Check if user is really project member or not, doesn't care about user role, returning task
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
+	// Check if task is still relevant
+	if err := s.validateTaskAvailability(task); err != nil {
 		return nil, err
 	}
-	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "confict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
-	}
+
 	// Check authorithy
-	if task.AssigneeID == nil || *task.AssigneeID != userID {
-		return nil, app_errors.NewAppError(
-			fiber.StatusForbidden,
-			app_errors.ErrForbidden,
-			"forbidden.not_task_assignee",
-			nil,
-		)
+	if err := s.verifyTaskAssignee(task, userID); err != nil {
+		return nil, err
 	}
+
 	// Prepare transaction to update task
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
@@ -336,20 +286,15 @@ func (s *AufgabenService) ForwardProgressTask(ctx context.Context, userID, proje
 		return nil, err
 	}
 
-	idEvent, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
 	note := fmt.Sprintf("Assignment done by: %s, at: %s", forward.AssigneeID, time.Now().Local())
-	assignEvent := &entity.AddAssignment{
-		ID:         idEvent.String(),
+	completeEvent := &entity.AddAssignment{
 		AufgabenID: forward.ID,
 		ActorID:    forward.AssigneeID,
 		Action:     entity.ActionComplete,
 		Note:       &note,
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, assignEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, completeEvent); err != nil {
 		return nil, err
 	}
 
@@ -370,48 +315,26 @@ func (s *AufgabenService) ForwardProgressTask(ctx context.Context, userID, proje
 
 func (s *AufgabenService) UnassignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.UnassignAufgabenRequest) (*aufgaben_dto.UnassignAufgabenResponse, *app_errors.AppError) {
 	// TODO
-	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
+	// Check if creator is really project member or not and returning corresponding task, doesn't care about user role
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
 	// Check authorithy
-	if task.AssigneeID == nil || *task.AssigneeID != userID {
-		return nil, app_errors.NewAppError(
-			fiber.StatusForbidden,
-			app_errors.ErrForbidden,
-			"forbidden.not_task_assignee",
-			nil,
-		)
+	if err := s.verifyTaskAssignee(task, userID); err != nil {
+		return nil, err
 	}
+
 	// Rollback assignment status
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	defer tx.Rollback(ctx)
-
-	idEvent, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
 
 	note := fmt.Sprintf("Rollback assignment status by: %v", userID)
 	if req.Note != nil {
@@ -419,7 +342,7 @@ func (s *AufgabenService) UnassignTask(ctx context.Context, userID, projectID, t
 	}
 
 	unassignModel := &entity.UnassignTaskEntity{
-		ID:         idEvent.String(),
+		ID:         task.ID,
 		AssigneeID: userID,
 	}
 
@@ -429,7 +352,6 @@ func (s *AufgabenService) UnassignTask(ctx context.Context, userID, projectID, t
 	}
 
 	unassignEvent := &entity.AddAssignment{
-		ID:               idEvent.String(),
 		AufgabenID:       taskID,
 		ActorID:          userID,
 		TargetAssigneeID: &userID,
@@ -439,7 +361,7 @@ func (s *AufgabenService) UnassignTask(ctx context.Context, userID, projectID, t
 		ReasonCode:       entity.ReasonCodeEvent(req.ReasonCode),
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, unassignEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, unassignEvent); err != nil {
 		return nil, err
 	}
 
@@ -462,59 +384,32 @@ func (s *AufgabenService) UnassignTask(ctx context.Context, userID, projectID, t
 
 func (s *AufgabenService) ForceUnassignTask(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.ForceUnassignAufgabenRequest) (*aufgaben_dto.UnassignAufgabenResponse, *app_errors.AppError) {
 	// TODO
-	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, req.TargetID)
+	// Check if user is really project member or not, doesn't care about user role, returning task
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
 	// Check if the performer has valid authority
-	userRole, err := s.repo.GetUserRole(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyUserRole(ctx, projectID, userID, entity.MEISTER); err != nil {
 		return nil, err
 	}
 
-	if userRole == nil || *userRole != entity.MEISTER {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
-	}
+
 	// Check target validity
-	if task.AssigneeID == nil || *task.AssigneeID != req.TargetID {
-		return nil, app_errors.NewAppError(
-			fiber.StatusForbidden,
-			app_errors.ErrForbidden,
-			"forbidden.not_task_assignee",
-			nil,
-		)
+	if err := s.verifyTaskAssignee(task, req.TargetID); err != nil {
+		return nil, err
 	}
 	// Rollback assignment status
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", txErr)
 	}
 	defer tx.Rollback(ctx)
-
-	idEvent, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
 
 	note := fmt.Sprintf("Rollback assignment status by: %v", userID)
 	if req.Note != nil {
@@ -522,7 +417,7 @@ func (s *AufgabenService) ForceUnassignTask(ctx context.Context, userID, project
 	}
 
 	unassignModel := &entity.UnassignTaskEntity{
-		ID:         idEvent.String(),
+		ID:         task.ID,
 		AssigneeID: req.TargetID,
 	}
 
@@ -532,7 +427,6 @@ func (s *AufgabenService) ForceUnassignTask(ctx context.Context, userID, project
 	}
 
 	unassignEvent := &entity.AddAssignment{
-		ID:               idEvent.String(),
 		AufgabenID:       taskID,
 		ActorID:          userID,
 		TargetAssigneeID: &req.TargetID,
@@ -542,7 +436,7 @@ func (s *AufgabenService) ForceUnassignTask(ctx context.Context, userID, project
 		ReasonCode:       entity.ReasonCodeEvent(req.ReasonCode),
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, unassignEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, unassignEvent); err != nil {
 		return nil, err
 	}
 
@@ -569,27 +463,14 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 	// Meister => forcibly reassign aufgabe from one to another person that either endorsed or not.
 	// Mitarbeiter => request meister to handover his task to another person that he had endorsed before.
 
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, req.TargetID)
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
 
 	// Check if the performer has valid authority
@@ -599,7 +480,7 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 	}
 
 	// Begin Transaction
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
@@ -622,13 +503,8 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 		if req.Note != "" {
 			note = req.Note
 		}
-		idEvent, idErr := uuid.NewV7()
-		if idErr != nil {
-			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-		}
 
 		reAssignmentEvent := &entity.AddAssignment{
-			ID:               idEvent.String(),
 			AufgabenID:       taskID,
 			ActorID:          userID,
 			TargetAssigneeID: &req.TargetID,
@@ -638,7 +514,7 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 			ReasonCode:       entity.ReasonCodeEvent(*req.ReasonCode),
 		}
 
-		if err := s.repo.InsertAssignmentEvent(ctx, tx, reAssignmentEvent); err != nil {
+		if _, err := s.createAndInsertEvent(ctx, tx, reAssignmentEvent); err != nil {
 			return nil, err
 		}
 
@@ -648,10 +524,10 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 		resp = &aufgaben_dto.ReassignAufgabenResponse{
 			AufgabenID:    newAufgaben.ID,
 			Status:        string(newAufgaben.Status),
-			NewAssigneeID: newAufgaben.AssigneeID,
+			NewAssigneeID: &newAufgaben.AssigneeID,
 			Note:          *reAssignmentEvent.Note,
 			Action:        string(reAssignmentEvent.Action),
-			Reason:        *reAssignmentEvent.ReasonText,
+			Reason:        reAssignmentEvent.ReasonText,
 		}
 
 	case entity.MITARBEITER:
@@ -670,13 +546,7 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 			note = req.Note
 		}
 
-		idEvent, idErr := uuid.NewV7()
-		if idErr != nil {
-			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-		}
-
 		reAssignmentEvent := &entity.AddAssignment{
-			ID:               idEvent.String(),
 			AufgabenID:       taskID,
 			ActorID:          userID,
 			TargetAssigneeID: &req.TargetID,
@@ -684,7 +554,7 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 			Note:             &note,
 		}
 
-		if err := s.repo.InsertAssignmentEvent(ctx, tx, reAssignmentEvent); err != nil {
+		if _, err := s.createAndInsertEvent(ctx, tx, reAssignmentEvent); err != nil {
 			return nil, err
 		}
 
@@ -712,8 +582,8 @@ func (s *AufgabenService) ReassignTask(ctx context.Context, userID, projectID, t
 		resp = &aufgaben_dto.ReassignAufgabenResponse{
 			AufgabenID: taskID,
 			Note:       *reAssignmentEvent.Note,
+			Status:     string(task.Status),
 			Action:     string(reAssignmentEvent.Action),
-			Reason:     *reAssignmentEvent.ReasonText,
 		}
 	}
 
@@ -779,7 +649,7 @@ func (s *AufgabenService) ListAssignedTasks(ctx context.Context, userID string, 
 
 	cursor := &dtos.CursorPaginationMeta{
 		Limit:      filter.Limit,
-		NextCursor: nextCursor,
+		NextCursor: *nextCursor,
 		HasMore:    hasMore,
 	}
 
@@ -789,41 +659,23 @@ func (s *AufgabenService) ListAssignedTasks(ctx context.Context, userID string, 
 func (s *AufgabenService) ArchiveTask(ctx context.Context, userID, projectID, taskID string) *app_errors.AppError {
 	// TODO
 	// Check if creator is really project member or not
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return err
 	}
 
-	if isProjectMember == false {
-		return app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return err
-	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return err
 	}
 
 	// Check if the performer has valid authority
-	userRole, err := s.repo.GetUserRole(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyUserRole(ctx, projectID, userID, entity.MEISTER); err != nil {
 		return err
 	}
 
-	if *userRole != entity.MEISTER {
-		return app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
 	// Archive the task, start transaction
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
@@ -833,15 +685,9 @@ func (s *AufgabenService) ArchiveTask(ctx context.Context, userID, projectID, ta
 		return err
 	}
 
-	id, idErr := uuid.NewV7()
-	if idErr != nil {
-		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
-
 	note := fmt.Sprintf("Archive task by: %s", userID)
 	archivedAt := time.Now()
 	archiveEvent := &entity.AddAssignment{
-		ID:             id.String(),
 		AufgabenID:     taskID,
 		ActorID:        userID,
 		Action:         entity.ActionArchive,
@@ -851,7 +697,7 @@ func (s *AufgabenService) ArchiveTask(ctx context.Context, userID, projectID, ta
 	}
 
 	// insert archive event
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, archiveEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, archiveEvent); err != nil {
 		return err
 	}
 
@@ -865,31 +711,18 @@ func (s *AufgabenService) ArchiveTask(ctx context.Context, userID, projectID, ta
 func (s *AufgabenService) UpdateDueDate(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.UpdateDueDateRequest) (*aufgaben_dto.UpdateDueDateResponse, *app_errors.AppError) {
 	// TODO
 	// Check if performer is really project member or not
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
 
 	// Update due date
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
@@ -900,21 +733,15 @@ func (s *AufgabenService) UpdateDueDate(ctx context.Context, userID, projectID, 
 		return nil, err
 	}
 
-	id, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
-
 	note := fmt.Sprintf("Task due date updated to: %s", req.DueDate)
 	updateEvent := &entity.AddAssignment{
-		ID:         id.String(),
 		AufgabenID: taskID,
 		ActorID:    userID,
 		Action:     entity.ActionDueDateUpdate,
 		Note:       &note,
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, updateEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, updateEvent); err != nil {
 		return nil, err
 	}
 
@@ -935,13 +762,8 @@ func (s *AufgabenService) UpdateDueDate(ctx context.Context, userID, projectID, 
 func (s *AufgabenService) FetchEventsForTask(ctx context.Context, userID, projectID, taskID string, filters *aufgaben_dto.AufgabenEventFilter) ([]*aufgaben_dto.AufgabenEventItem, *dtos.CursorPaginationMeta, *app_errors.AppError) {
 	// TODO
 	// Check if performer is really project member or not
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyProjectMember(ctx, projectID, userID); err != nil {
 		return nil, nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
 	// Check if task exists
@@ -999,7 +821,7 @@ func (s *AufgabenService) FetchEventsForTask(ctx context.Context, userID, projec
 
 	return data, &dtos.CursorPaginationMeta{
 		Limit:      filters.Limit,
-		NextCursor: nextCursor,
+		NextCursor: *nextCursor,
 		HasMore:    hasMore,
 	}, nil
 }
@@ -1007,46 +829,28 @@ func (s *AufgabenService) FetchEventsForTask(ctx context.Context, userID, projec
 func (s *AufgabenService) ForceAufgabeHandover(ctx context.Context, userID, projectID, taskID string, req *aufgaben_dto.ForceAufgabeHandoverRequest) (*aufgaben_dto.ReassignAufgabenResponse, *app_errors.AppError) {
 	// TODO
 	// Check if creator is really project member or not, doesn't care about user role
-	isProjectMember, err := s.repo.CheckProjectMember(ctx, projectID, req.TargetID)
+	task, err := s.getTaskAndVerifyMember(ctx, projectID, userID, taskID)
 	if err != nil {
 		return nil, err
-	}
-
-	if isProjectMember == false {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
 	// Check if the performer has valid authority
-	userRole, err := s.repo.GetUserRole(ctx, projectID, userID)
-	if err != nil {
+	if err := s.verifyUserRole(ctx, projectID, userID, entity.MEISTER); err != nil {
 		return nil, err
 	}
 
-	if userRole == nil || *userRole != entity.MEISTER {
-		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
-	}
-
-	// Check if task exists
-	task, err := s.repo.GetTaskByID(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
 	// Check if task is still relevant
-	if task.ArchivedAt != nil {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_unavailable", nil)
-	}
-	// Check task status, if 'Archived' or 'Done' throw conflict
-	if task.Status == entity.AufgabenArchived || task.Status == entity.AufgabenDone {
-		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.task_is_archive_or_done", fmt.Errorf("Task status is Archived or Done"))
+	if err := s.validateTaskAvailability(task); err != nil {
+		return nil, err
 	}
 
 	// Check target validity, target should be different from current assignee
-	if task.AssigneeID == &req.TargetID {
+	if *task.AssigneeID == req.TargetID {
 		return nil, app_errors.NewAppError(fiber.StatusConflict, app_errors.ErrConflict, "conflict.target_invalid", fmt.Errorf("Target and current assignee can't be the same person"))
 	}
 
 	// Handover assignment
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", txErr)
 	}
@@ -1058,15 +862,10 @@ func (s *AufgabenService) ForceAufgabeHandover(ctx context.Context, userID, proj
 	}
 
 	// Insert handover event
-	idEvent, idErr := uuid.NewV7()
-	if idErr != nil {
-		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
-	}
 
 	note := fmt.Sprintf("Force handover assignment from %s to %s, note: %s", *task.AssigneeID, req.TargetID, req.Note)
 
 	handoverEvent := &entity.AddAssignment{
-		ID:               idEvent.String(),
 		AufgabenID:       taskID,
 		ActorID:          userID,
 		TargetAssigneeID: &req.TargetID,
@@ -1076,7 +875,7 @@ func (s *AufgabenService) ForceAufgabeHandover(ctx context.Context, userID, proj
 		ReasonCode:       entity.ReasonCodeEvent(req.ReasonCode),
 	}
 
-	if err := s.repo.InsertAssignmentEvent(ctx, tx, handoverEvent); err != nil {
+	if _, err := s.createAndInsertEvent(ctx, tx, handoverEvent); err != nil {
 		return nil, err
 	}
 
@@ -1087,10 +886,10 @@ func (s *AufgabenService) ForceAufgabeHandover(ctx context.Context, userID, proj
 	resp := &aufgaben_dto.ReassignAufgabenResponse{
 		AufgabenID:    newAufgabe.ID,
 		Status:        string(newAufgabe.Status),
-		NewAssigneeID: newAufgabe.AssigneeID,
+		NewAssigneeID: &newAufgabe.AssigneeID,
 		Note:          *handoverEvent.Note,
 		Action:        string(handoverEvent.Action),
-		Reason:        *handoverEvent.ReasonText,
+		Reason:        handoverEvent.ReasonText,
 	}
 
 	return resp, nil
