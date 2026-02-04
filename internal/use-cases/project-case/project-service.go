@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	"github.com/Xenn-00/aufgaben-meister/internal/dtos"
 	project_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/project-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
@@ -18,7 +19,6 @@ import (
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/redis/go-redis/v9"
@@ -27,7 +27,7 @@ import (
 
 type ProjectService struct {
 	redis     *redis.Client
-	db        *pgxpool.Pool
+	txManager tx.TxManager
 	repo      project_repo.ProjectRepoContract
 	taskQueue *queue.TaskQueue
 }
@@ -35,7 +35,7 @@ type ProjectService struct {
 func NewProjectService(db *pgxpool.Pool, redis *redis.Client) ProjectServiceContract {
 	return &ProjectService{
 		redis:     redis,
-		db:        db,
+		txManager: tx.NewPgxTxManager(db),
 		repo:      project_repo.NewUserRepo(db),
 		taskQueue: queue.NewTaskQueue(redis),
 	}
@@ -55,7 +55,7 @@ func (s *ProjectService) CreateNewProject(ctx context.Context, req project_dto.C
 	}
 
 	// Begin transaction
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.txManager.Begin(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaction")
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
@@ -255,7 +255,7 @@ func (s *ProjectService) InviteProjectMember(ctx context.Context, projectID, use
 	}
 
 	// begin transaction
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", txErr)
 	}
@@ -322,7 +322,7 @@ func (s *ProjectService) InviteProjectMember(ctx context.Context, projectID, use
 func (s *ProjectService) AcceptInvitationProject(ctx context.Context, req *project_dto.InvitationQueryRequest, userID string) (*project_dto.InvitationMemberAccepted, *app_errors.AppError) {
 	// TODO:
 	// 0. Start DB transaktion
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", txErr)
 	}
@@ -410,7 +410,7 @@ func (s *ProjectService) GetSelfInvitationPending(ctx context.Context, userID st
 func (s *ProjectService) RejectProjectInvitation(ctx context.Context, invitationID, userID string) (*project_dto.RejectProjectInvitationResponse, *app_errors.AppError) {
 	// TODO:
 	// 0. Transaction begin
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", txErr)
 	}
@@ -481,7 +481,7 @@ func (s *ProjectService) RevokeProjectInvitations(ctx context.Context, projectID
 		return nil, app_errors.NewAppError(fiber.StatusForbidden, app_errors.ErrForbidden, "forbidden", nil)
 	}
 
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", nil)
 	}
@@ -557,7 +557,7 @@ func (s *ProjectService) ResendProjectInvitations(ctx context.Context, invitatio
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	tokenHash := sha256.Sum256([]byte(newToken))
-	tx, txErr := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, txErr := s.txManager.Begin(ctx)
 	if txErr != nil {
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}

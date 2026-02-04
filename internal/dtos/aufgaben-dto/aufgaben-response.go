@@ -61,12 +61,12 @@ type UnassignAufgabenResponse struct {
 }
 
 type ReassignAufgabenResponse struct {
-	AufgabenID    string `json:"aufgaben_id"`
-	NewAssigneeID string `json:"new_assignee_id"`
-	Status        string `json:"status,omitempty"`
-	Note          string `json:"note"`
-	Action        string `json:"action"`
-	Reason        string `json:"reason,omitempty"`
+	AufgabenID    string  `json:"aufgaben_id"`
+	NewAssigneeID *string `json:"new_assignee_id"`
+	Status        string  `json:"status,omitempty"`
+	Note          string  `json:"note"`
+	Action        string  `json:"action"`
+	Reason        *string `json:"reason,omitempty"`
 }
 
 type UpdateDueDateResponse struct {

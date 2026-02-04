@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	auth_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/auth-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
@@ -13,7 +14,6 @@ import (
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
@@ -22,17 +22,18 @@ import (
 type AuthService struct {
 	// Hier können Abhängigkeiten wie Repositories
 	// oder andere Services eingefügt werden.
-	db     *pgxpool.Pool
-	redis  *redis.Client
-	paseto *utils.PasetoMaker
-	repo   auth_repo.AuthRepoContract
+	txManager tx.TxManager
+	redis     *redis.Client
+	paseto    *utils.PasetoMaker
+	repo      auth_repo.AuthRepoContract
 }
 
 func NewAuthService(db *pgxpool.Pool, redis *redis.Client, paseto *utils.PasetoMaker) AuthServiceContract {
 	return &AuthService{
-		repo:   auth_repo.NewAuthRepo(db),
-		redis:  redis,
-		paseto: paseto,
+		repo:      auth_repo.NewAuthRepo(db),
+		txManager: tx.NewPgxTxManager(db),
+		redis:     redis,
+		paseto:    paseto,
 	}
 }
 
@@ -135,7 +136,7 @@ func (s *AuthService) LoginUser(ctx context.Context, req auth_dto.LoginUserReque
 	// Überprüft der Benutzer, ob der noch Aktiv ist oder nicht
 	if !user.IsActive {
 		// Wieder Aktiviert
-		tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+		tx, err := s.txManager.Begin(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
 			return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)

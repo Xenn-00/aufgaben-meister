@@ -8,7 +8,6 @@ import (
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/goccy/go-json"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -43,7 +42,7 @@ func (wh *WorkerHander) WorkerInvitationExpireHandler() asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		log.Info().Msg("Worker handler: Worker invitation expire hit.")
 		// begin transaction
-		tx, txErr := wh.db.BeginTx(ctx, pgx.TxOptions{})
+		tx, txErr := wh.txManager.Begin(ctx)
 		if txErr != nil {
 			log.Error().Err(txErr).Msg("Worker handler: Failed to open db transaction")
 			return nil

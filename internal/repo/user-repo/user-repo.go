@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/gofiber/fiber/v2"
@@ -98,7 +99,8 @@ func (r *UserRepo) FindUserWithProjects(ctx context.Context, userID string) (*en
 	return &userWithProject, nil
 }
 
-func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, tx pgx.Tx, userID string, model entity.UserUpdate) (*entity.UserEntity, *app_errors.AppError) {
+func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, t tx.Tx, userID string, model entity.UserUpdate) (*entity.UserEntity, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	setClauses := make([]string, 0)
 	args := make([]any, 0)
 	argPos := 1
@@ -140,7 +142,7 @@ func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, tx pgx.Tx, userID st
 
 	args = append(args, userID)
 
-	row := tx.QueryRow(ctx, query, args...)
+	row := pgxTx.QueryRow(ctx, query, args...)
 
 	var user entity.UserEntity
 	err := row.Scan(
@@ -162,13 +164,14 @@ func (r *UserRepo) UpdateSelfProfileTx(ctx context.Context, tx pgx.Tx, userID st
 	return &user, nil
 }
 
-func (r *UserRepo) DeactivateSelfUser(ctx context.Context, tx pgx.Tx, userID string) (bool, *app_errors.AppError) {
+func (r *UserRepo) DeactivateSelfUser(ctx context.Context, t tx.Tx, userID string) (bool, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 		UPDATE users
 		SET is_active = false
 		WHERE id = $1
 	`
-	if _, err := tx.Exec(ctx, query, userID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}

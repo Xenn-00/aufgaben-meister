@@ -7,7 +7,6 @@ import (
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/goccy/go-json"
 	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -25,7 +24,7 @@ func (wh *WorkerHander) OverdueAufgaben() asynq.HandlerFunc {
 			return nil
 		}
 		// If there are matches, start transaction
-		tx, txErr := wh.db.BeginTx(ctx, pgx.TxOptions{})
+		tx, txErr := wh.txManager.Begin(ctx)
 		if txErr != nil {
 			log.Error().Err(txErr).Msg("Worker handler: Failed to open db transaction")
 			return txErr
@@ -84,7 +83,7 @@ func (wh *WorkerHander) ReminderAufgaben() asynq.HandlerFunc {
 		}
 
 		// If there are matches, start transaction
-		tx, txErr := wh.db.BeginTx(ctx, pgx.TxOptions{})
+		tx, txErr := wh.txManager.Begin(ctx)
 		if txErr != nil {
 			log.Error().Err(txErr).Msg("Worker handler: Failed to open db transaction")
 			return nil

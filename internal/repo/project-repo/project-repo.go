@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	project_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/project-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
@@ -26,7 +27,8 @@ func NewUserRepo(db *pgxpool.Pool) ProjectRepoContract {
 	}
 }
 
-func (r *ProjectRepo) InsertNewProject(ctx context.Context, tx pgx.Tx, modelProject *entity.ProjectEntity) (*entity.ProjectEntity, *app_errors.AppError) {
+func (r *ProjectRepo) InsertNewProject(ctx context.Context, t tx.Tx, modelProject *entity.ProjectEntity) (*entity.ProjectEntity, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	cols := []string{"id", "name", "type", "visibility", "master_id"}
 	vals := []any{modelProject.ID, modelProject.Name, modelProject.Type, modelProject.Visibility, modelProject.MasterID}
 
@@ -42,14 +44,14 @@ func (r *ProjectRepo) InsertNewProject(ctx context.Context, tx pgx.Tx, modelProj
 	`, strings.Join(cols, ","), strings.Join(placeholders, ","))
 
 	var project entity.ProjectEntity
-	if err := tx.QueryRow(ctx, projectQuery, vals...).Scan(&project.ID, &project.Name, &project.Type, &project.Visibility, &project.MasterID, &project.CreatedAt); err != nil {
+	if err := pgxTx.QueryRow(ctx, projectQuery, vals...).Scan(&project.ID, &project.Name, &project.Type, &project.Visibility, &project.MasterID, &project.CreatedAt); err != nil {
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
 	return &project, nil
 }
 
-func (r *ProjectRepo) InsertNewProjectMember(ctx context.Context, tx pgx.Tx, projectID, userID string, role entity.UserRole) *app_errors.AppError {
-
+func (r *ProjectRepo) InsertNewProjectMember(ctx context.Context, t tx.Tx, projectID, userID string, role entity.UserRole) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	projectMemberQuery := `
 	INSERT INTO project_members (
 		id, project_id, user_id, role
@@ -60,7 +62,7 @@ func (r *ProjectRepo) InsertNewProjectMember(ctx context.Context, tx pgx.Tx, pro
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", uuidErr)
 	}
 
-	if _, err := tx.Exec(ctx, projectMemberQuery, memberID.String(), projectID, userID, role); err != nil {
+	if _, err := pgxTx.Exec(ctx, projectMemberQuery, memberID.String(), projectID, userID, role); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 	return nil
@@ -274,7 +276,8 @@ func (r *ProjectRepo) GetUsersByIds(ctx context.Context, userIDs []string) (map[
 	return result, nil
 }
 
-func (r *ProjectRepo) BatchInsertProjectInvitation(ctx context.Context, tx pgx.Tx, invs []entity.ProjectInvitationEntity) *app_errors.AppError {
+func (r *ProjectRepo) BatchInsertProjectInvitation(ctx context.Context, t tx.Tx, invs []entity.ProjectInvitationEntity) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	INSERT INTO project_invitations (
 		id,
@@ -294,7 +297,7 @@ func (r *ProjectRepo) BatchInsertProjectInvitation(ctx context.Context, tx pgx.T
 		batch.Queue(query, inv.ID, inv.ProjectID, inv.InvitedUserID, inv.InvitedBy, inv.Role, inv.Status, inv.TokenHash, inv.ExpiresAt)
 	}
 
-	br := tx.SendBatch(ctx, batch)
+	br := pgxTx.SendBatch(ctx, batch)
 
 	err := br.Close()
 	if err != nil {
@@ -323,13 +326,14 @@ func (r *ProjectRepo) GetInvitationInfo(ctx context.Context, invitationID string
 	return &resp, nil
 }
 
-func (r *ProjectRepo) GetInvitationProjectByIDWithTx(ctx context.Context, tx pgx.Tx, invitationID string) (*entity.ProjectInvitationEntity, *app_errors.AppError) {
+func (r *ProjectRepo) GetInvitationProjectByIDWithTx(ctx context.Context, t tx.Tx, invitationID string) (*entity.ProjectInvitationEntity, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	SELECT * FROM project_invitations WHERE id = $1 FOR UPDATE;
 	`
 
 	var projectInvitation entity.ProjectInvitationEntity
-	if err := tx.QueryRow(ctx, query, invitationID).Scan(&projectInvitation.ID, &projectInvitation.ProjectID, &projectInvitation.InvitedUserID, &projectInvitation.InvitedBy, &projectInvitation.Role, &projectInvitation.Status, &projectInvitation.TokenHash, &projectInvitation.ExpiresAt, &projectInvitation.AcceptedAt, &projectInvitation.CreatedAt, &projectInvitation.RevokedAt, &projectInvitation.RejectedAt); err != nil {
+	if err := pgxTx.QueryRow(ctx, query, invitationID).Scan(&projectInvitation.ID, &projectInvitation.ProjectID, &projectInvitation.InvitedUserID, &projectInvitation.InvitedBy, &projectInvitation.Role, &projectInvitation.Status, &projectInvitation.TokenHash, &projectInvitation.ExpiresAt, &projectInvitation.AcceptedAt, &projectInvitation.CreatedAt, &projectInvitation.RevokedAt, &projectInvitation.RejectedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 		}
@@ -355,13 +359,14 @@ func (r *ProjectRepo) GetInvitationProjectByID(ctx context.Context, invitationID
 	return &projectInvitation, nil
 }
 
-func (r *ProjectRepo) AcceptUserInvitationState(ctx context.Context, tx pgx.Tx, invitationID, status string) *app_errors.AppError {
+func (r *ProjectRepo) AcceptUserInvitationState(ctx context.Context, t tx.Tx, invitationID, status string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE project_invitations 
 	SET accepted_at = now(), status = $1, token_hash = NULL
 	WHERE id = $2;
 	`
-	if _, err := tx.Exec(ctx, query, status, invitationID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, status, invitationID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 		}
@@ -370,7 +375,8 @@ func (r *ProjectRepo) AcceptUserInvitationState(ctx context.Context, tx pgx.Tx, 
 	return nil
 }
 
-func (r *ProjectRepo) RejectUserInvitationState(ctx context.Context, tx pgx.Tx, invitationID, status string) *app_errors.AppError {
+func (r *ProjectRepo) RejectUserInvitationState(ctx context.Context, t tx.Tx, invitationID, status string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE project_invitations
 	SET status = $1, 
@@ -379,7 +385,7 @@ func (r *ProjectRepo) RejectUserInvitationState(ctx context.Context, tx pgx.Tx, 
 	WHERE id = $2;
 	`
 
-	if _, err := tx.Exec(ctx, query, status, invitationID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, status, invitationID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
 		}
@@ -420,7 +426,8 @@ func (r *ProjectRepo) GetUserPendingInvitations(ctx context.Context, userID stri
 	return invs, nil
 }
 
-func (r *ProjectRepo) RevokePendingInvitations(ctx context.Context, tx pgx.Tx, projectID string, targetUserIDs []string) ([]string, *app_errors.AppError) {
+func (r *ProjectRepo) RevokePendingInvitations(ctx context.Context, t tx.Tx, projectID string, targetUserIDs []string) ([]string, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE project_invitations
 	SET status = 'Revoked', 
@@ -431,7 +438,7 @@ func (r *ProjectRepo) RevokePendingInvitations(ctx context.Context, tx pgx.Tx, p
 		AND status = 'Pending'
 	RETURNING invited_user_id;
 	`
-	rows, err := tx.Query(ctx, query, projectID, targetUserIDs)
+	rows, err := pgxTx.Query(ctx, query, projectID, targetUserIDs)
 	if err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
@@ -451,7 +458,8 @@ func (r *ProjectRepo) RevokePendingInvitations(ctx context.Context, tx pgx.Tx, p
 	return revoked, nil
 }
 
-func (r *ProjectRepo) RevokeAcceptedMembers(ctx context.Context, tx pgx.Tx, projectID string, targetUserIDs []string) ([]string, *app_errors.AppError) {
+func (r *ProjectRepo) RevokeAcceptedMembers(ctx context.Context, t tx.Tx, projectID string, targetUserIDs []string) ([]string, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	queryPM := `
 	UPDATE project_members
 	SET deleted_at = now()
@@ -460,7 +468,7 @@ func (r *ProjectRepo) RevokeAcceptedMembers(ctx context.Context, tx pgx.Tx, proj
 		AND deleted_at IS NULL
 	RETURNING user_id;
 	`
-	rows, err := tx.Query(ctx, queryPM, projectID, targetUserIDs)
+	rows, err := pgxTx.Query(ctx, queryPM, projectID, targetUserIDs)
 	if err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
@@ -485,14 +493,15 @@ func (r *ProjectRepo) RevokeAcceptedMembers(ctx context.Context, tx pgx.Tx, proj
 		AND invited_user_id = ANY($2)
 		AND status = 'Accepted';
 	`
-	if _, err := tx.Exec(ctx, queryPI, projectID, revoked); err != nil {
+	if _, err := pgxTx.Exec(ctx, queryPI, projectID, revoked); err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
 
 	return revoked, nil
 }
 
-func (r *ProjectRepo) RotateTokenInvitation(ctx context.Context, tx pgx.Tx, invitationID string, tokenHash string, expiration time.Time) *app_errors.AppError {
+func (r *ProjectRepo) RotateTokenInvitation(ctx context.Context, t tx.Tx, invitationID string, tokenHash string, expiration time.Time) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE project_invitations
 	SET token_hash = $1
@@ -500,7 +509,7 @@ func (r *ProjectRepo) RotateTokenInvitation(ctx context.Context, tx pgx.Tx, invi
 	WHERE id = $3
 		AND status = 'Pending';
 	`
-	if _, err := tx.Exec(ctx, query, tokenHash, expiration, invitationID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, tokenHash, expiration, invitationID); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 
@@ -554,7 +563,8 @@ func (r *ProjectRepo) ListInvitations(ctx context.Context, projectID string, fil
 	return invs, nil
 }
 
-func (r *ProjectRepo) ListInvitationsExpire(ctx context.Context, tx pgx.Tx) ([]string, *app_errors.AppError) {
+func (r *ProjectRepo) ListInvitationsExpire(ctx context.Context, t tx.Tx) ([]string, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	SELECT id FROM project_invitations
 	WHERE status = 'Pending'
@@ -562,7 +572,7 @@ func (r *ProjectRepo) ListInvitationsExpire(ctx context.Context, tx pgx.Tx) ([]s
 	`
 
 	var ids []string
-	rows, err := tx.Query(ctx, query)
+	rows, err := pgxTx.Query(ctx, query)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "project_not_found", nil)
@@ -582,7 +592,8 @@ func (r *ProjectRepo) ListInvitationsExpire(ctx context.Context, tx pgx.Tx) ([]s
 	return ids, nil
 }
 
-func (r *ProjectRepo) UpdateInvitationsExpire(ctx context.Context, tx pgx.Tx, invitationIDs []string) *app_errors.AppError {
+func (r *ProjectRepo) UpdateInvitationsExpire(ctx context.Context, t tx.Tx, invitationIDs []string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE project_invitations
 	SET status = 'Expired',
@@ -591,7 +602,7 @@ func (r *ProjectRepo) UpdateInvitationsExpire(ctx context.Context, tx pgx.Tx, in
 	WHERE id = ANY($1);
 	`
 
-	if _, err := tx.Exec(ctx, query, invitationIDs); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, invitationIDs); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 	return nil

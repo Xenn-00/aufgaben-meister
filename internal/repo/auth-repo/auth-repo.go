@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/gofiber/fiber/v2"
@@ -153,14 +154,15 @@ func (r *AuthRepo) IsUserActive(ctx context.Context, userID string) (bool, *app_
 	return IsActive, nil
 }
 
-func (r *AuthRepo) UserActivate(ctx context.Context, tx pgx.Tx, userID string) (bool, *app_errors.AppError) {
+func (r *AuthRepo) UserActivate(ctx context.Context, t tx.Tx, userID string) (bool, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 		UPDATE users
 		SET is_active = true
 		WHERE id = $1
 	`
 
-	if _, err := tx.Exec(ctx, query, userID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, userID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, app_errors.NewAppError(fiber.StatusNotFound, app_errors.ErrNotFound, "user_not_found", nil)
 		}

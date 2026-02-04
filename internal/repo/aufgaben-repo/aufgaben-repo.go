@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
@@ -192,7 +193,8 @@ func (r *AufgabenRepo) ListTasks(ctx context.Context, projectID string, filter *
 	return results, nil
 }
 
-func (r *AufgabenRepo) AssignTask(ctx context.Context, tx pgx.Tx, projectID, taskID, userID string, dueDate *time.Time) (*entity.AssignTaskEntity, *app_errors.AppError) {
+func (r *AufgabenRepo) AssignTask(ctx context.Context, t tx.Tx, projectID, taskID, userID string, dueDate *time.Time) (*entity.AssignTaskEntity, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE aufgaben
 	SET status = 'In_Progress',
@@ -205,14 +207,16 @@ func (r *AufgabenRepo) AssignTask(ctx context.Context, tx pgx.Tx, projectID, tas
 	`
 
 	var rows entity.AssignTaskEntity
-	if err := tx.QueryRow(ctx, query, userID, dueDate, projectID, taskID).Scan(&rows.ID, &rows.Status, &rows.Priority, &rows.AssigneeID, &rows.CreatedBy, &rows.DueDate); err != nil {
+	if err := pgxTx.QueryRow(ctx, query, userID, dueDate, projectID, taskID).Scan(&rows.ID, &rows.Status, &rows.Priority, &rows.AssigneeID, &rows.CreatedBy, &rows.DueDate); err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
 
 	return &rows, nil
 }
 
-func (r *AufgabenRepo) ForwardProgress(ctx context.Context, tx pgx.Tx, taskID string) (*entity.CompleteTaskEntity, *app_errors.AppError) {
+func (r *AufgabenRepo) ForwardProgress(ctx context.Context, t tx.Tx, taskID string) (*entity.CompleteTaskEntity, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
+
 	query := `
 	UPDATE aufgaben
 	SET status = 'Done',
@@ -222,14 +226,15 @@ func (r *AufgabenRepo) ForwardProgress(ctx context.Context, tx pgx.Tx, taskID st
 	`
 
 	var rows entity.CompleteTaskEntity
-	if err := tx.QueryRow(ctx, query, taskID).Scan(&rows.ID, &rows.Status, &rows.Priority, &rows.AssigneeID, &rows.CreatedBy, &rows.CompletedAt); err != nil {
+	if err := pgxTx.QueryRow(ctx, query, taskID).Scan(&rows.ID, &rows.Status, &rows.Priority, &rows.AssigneeID, &rows.CreatedBy, &rows.CompletedAt); err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
 
 	return &rows, nil
 }
 
-func (r *AufgabenRepo) InsertAssignmentEvent(ctx context.Context, tx pgx.Tx, event *entity.AddAssignment) *app_errors.AppError {
+func (r *AufgabenRepo) InsertAssignmentEvent(ctx context.Context, t tx.Tx, event *entity.AddAssignment) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	INSERT INTO aufgaben_assignment_events (
 		id,
@@ -244,13 +249,14 @@ func (r *AufgabenRepo) InsertAssignmentEvent(ctx context.Context, tx pgx.Tx, eve
 		$1,$2,$3,$4,$5,$6,$7,$8
 	);
 	`
-	if _, err := tx.Exec(ctx, query, event.ID, event.AufgabenID, event.ActorID, event.TargetAssigneeID, event.Action, event.Note, event.ReasonCode, event.ReasonText); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, event.ID, event.AufgabenID, event.ActorID, event.TargetAssigneeID, event.Action, event.Note, event.ReasonCode, event.ReasonText); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 	return nil
 }
 
-func (r *AufgabenRepo) UnassignTask(ctx context.Context, tx pgx.Tx, rollbackModel *entity.UnassignTaskEntity) (entity.AufgabenStatus, *app_errors.AppError) {
+func (r *AufgabenRepo) UnassignTask(ctx context.Context, t tx.Tx, rollbackModel *entity.UnassignTaskEntity) (entity.AufgabenStatus, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	// 1. Update aufgaben state
 	queryAufgaben := `
 	UPDATE aufgaben
@@ -262,7 +268,7 @@ func (r *AufgabenRepo) UnassignTask(ctx context.Context, tx pgx.Tx, rollbackMode
 	RETURNING status;
 	`
 	var status entity.AufgabenStatus
-	if err := tx.QueryRow(ctx, queryAufgaben, rollbackModel.ID, rollbackModel.AssigneeID).Scan(&status); err != nil {
+	if err := pgxTx.QueryRow(ctx, queryAufgaben, rollbackModel.ID, rollbackModel.AssigneeID).Scan(&status); err != nil {
 		return "", app_errors.MapPgxError(err)
 	}
 
@@ -332,7 +338,8 @@ func (r *AufgabenRepo) ListShouldRemindOverdue(ctx context.Context) ([]entity.Re
 	return aufgaben, nil
 }
 
-func (r *AufgabenRepo) BatchUpdateAufgabenReminderOverdue(ctx context.Context, tx pgx.Tx, taskIDs []string) *app_errors.AppError {
+func (r *AufgabenRepo) BatchUpdateAufgabenReminderOverdue(ctx context.Context, t tx.Tx, taskIDs []string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE aufgaben
 	SET reminder_stage = 'Overdue',
@@ -346,7 +353,7 @@ func (r *AufgabenRepo) BatchUpdateAufgabenReminderOverdue(ctx context.Context, t
 		batch.Queue(query, taskID)
 	}
 
-	br := tx.SendBatch(ctx, batch)
+	br := pgxTx.SendBatch(ctx, batch)
 
 	err := br.Close()
 	if err != nil {
@@ -356,7 +363,8 @@ func (r *AufgabenRepo) BatchUpdateAufgabenReminderOverdue(ctx context.Context, t
 	return nil
 }
 
-func (r *AufgabenRepo) UpdateAufgabeReminderBeforeDue(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError {
+func (r *AufgabenRepo) UpdateAufgabeReminderBeforeDue(ctx context.Context, t tx.Tx, taskID string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE aufgaben
 	SET reminder_stage = 'Before_Due',
@@ -365,7 +373,7 @@ func (r *AufgabenRepo) UpdateAufgabeReminderBeforeDue(ctx context.Context, tx pg
 		AND reminder_stage = 'None';
 	`
 
-	if _, err := tx.Exec(ctx, query, taskID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, taskID); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 
@@ -419,7 +427,8 @@ func (r *AufgabenRepo) ListAssignedTasks(ctx context.Context, userID string, fil
 	return aufgaben, nil
 }
 
-func (r *AufgabenRepo) ArchiveTask(ctx context.Context, tx pgx.Tx, taskID string) *app_errors.AppError {
+func (r *AufgabenRepo) ArchiveTask(ctx context.Context, t tx.Tx, taskID string) *app_errors.AppError {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE aufgaben
 	SET status = 'Archived',
@@ -428,13 +437,14 @@ func (r *AufgabenRepo) ArchiveTask(ctx context.Context, tx pgx.Tx, taskID string
 	WHERE id = $1;
 	`
 
-	if _, err := tx.Exec(ctx, query, taskID); err != nil {
+	if _, err := pgxTx.Exec(ctx, query, taskID); err != nil {
 		return app_errors.MapPgxError(err)
 	}
 	return nil
 }
 
-func (r *AufgabenRepo) UpdateDueDate(ctx context.Context, tx pgx.Tx, taskID string, dueDate time.Time) (*time.Time, *app_errors.AppError) {
+func (r *AufgabenRepo) UpdateDueDate(ctx context.Context, t tx.Tx, taskID string, dueDate time.Time) (*time.Time, *app_errors.AppError) {
+	pgxTx := t.(*tx.PgxTx).Tx
 	query := `
 	UPDATE aufgaben
 	SET due_date = $2,
@@ -447,7 +457,7 @@ func (r *AufgabenRepo) UpdateDueDate(ctx context.Context, tx pgx.Tx, taskID stri
 	`
 
 	var updatedDueDate time.Time
-	if err := tx.QueryRow(ctx, query, taskID, dueDate).Scan(&updatedDueDate); err != nil {
+	if err := pgxTx.QueryRow(ctx, query, taskID, dueDate).Scan(&updatedDueDate); err != nil {
 		return nil, app_errors.MapPgxError(err)
 	}
 

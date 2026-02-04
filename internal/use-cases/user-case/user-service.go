@@ -5,29 +5,29 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	user_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/user-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	user_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/user-repo"
 	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
 type UserService struct {
-	redis *redis.Client
-	db    *pgxpool.Pool
-	repo  user_repo.UserRepoContract
+	redis     *redis.Client
+	txManager tx.TxManager
+	repo      user_repo.UserRepoContract
 }
 
 func NewUserService(db *pgxpool.Pool, redis *redis.Client) UserServiceContract {
 	return &UserService{
-		redis: redis,
-		db:    db,
-		repo:  user_repo.NewUserRepo(db),
+		redis:     redis,
+		txManager: tx.NewPgxTxManager(db),
+		repo:      user_repo.NewUserRepo(db),
 	}
 }
 
@@ -128,7 +128,7 @@ func (s *UserService) UpdateSelfProfile(ctx context.Context, req user_dto.Update
 		UpdatedAt: time.Now().Format(time.RFC3339),
 	}
 
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.txManager.Begin(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
@@ -182,7 +182,7 @@ func (s *UserService) DeactivateSelfUser(ctx context.Context, req user_dto.Deact
 		return app_errors.NewAppError(fiber.StatusUnauthorized, app_errors.ErrUnauthorized, "auth.unauthorized", hashErr)
 	}
 
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.txManager.Begin(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaktion")
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
@@ -199,8 +199,8 @@ func (s *UserService) DeactivateSelfUser(ctx context.Context, req user_dto.Deact
 	}
 
 	key := fmt.Sprintf("user_sessions:%s:*", userID)
-	jtis, err := s.redis.SMembers(ctx, key).Result()
-	if err != nil {
+	jtis, rErr := s.redis.SMembers(ctx, key).Result()
+	if rErr != nil {
 		log.Error().Err(err).Msg("Fehler beim Abrufen der Redis-SMembers")
 		return app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}

@@ -10,9 +10,17 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type TaskQueueClient interface {
+	EnqueueSendInvitationEmail(payload *worker_task.SendInvitationEmailPayload) error
+	EnqueueSendProjectProgressReminder(payload *worker_task.SendProjectProgressReminder, remindAt time.Time) error
+	EnqueueHandoverRequestNotifyMeister(payload *worker_task.HandoverRequestNotifyMeister) error
+}
+
 type TaskQueue struct {
 	client *asynq.Client
 }
+
+var _ TaskQueueClient = (*TaskQueue)(nil)
 
 func NewTaskQueue(redis *redis.Client) *TaskQueue {
 	return &TaskQueue{
