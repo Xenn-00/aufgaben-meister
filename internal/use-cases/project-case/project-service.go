@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/cache"
 	"github.com/Xenn-00/aufgaben-meister/internal/abstraction/tx"
 	"github.com/Xenn-00/aufgaben-meister/internal/dtos"
 	project_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/project-dto"
@@ -15,7 +16,6 @@ import (
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
 	"github.com/Xenn-00/aufgaben-meister/internal/queue"
 	project_repo "github.com/Xenn-00/aufgaben-meister/internal/repo/project-repo"
-	"github.com/Xenn-00/aufgaben-meister/internal/utils"
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -26,22 +26,22 @@ import (
 )
 
 type ProjectService struct {
-	redis     *redis.Client
+	cache     cache.Cache
 	txManager tx.TxManager
 	repo      project_repo.ProjectRepoContract
-	taskQueue *queue.TaskQueue
+	taskQueue queue.TaskQueueClient
 }
 
 func NewProjectService(db *pgxpool.Pool, redis *redis.Client) ProjectServiceContract {
 	return &ProjectService{
-		redis:     redis,
+		cache:     cache.NewRedisCache(redis),
 		txManager: tx.NewPgxTxManager(db),
 		repo:      project_repo.NewUserRepo(db),
 		taskQueue: queue.NewTaskQueue(redis),
 	}
 }
 
-func (s *ProjectService) CreateNewProject(ctx context.Context, req project_dto.CreateNewProjectRequest, userID string) (*project_dto.CreateNewProjectResponse, *app_errors.AppError) {
+func (s *ProjectService) CreateNewProject(ctx context.Context, req *project_dto.CreateNewProjectRequest, userID string) (*project_dto.CreateNewProjectResponse, *app_errors.AppError) {
 	// Ground Principal
 	// 1. 1 Project = 1 Meister (for now)
 	// 2. Source of the truth role = project_members
@@ -60,13 +60,7 @@ func (s *ProjectService) CreateNewProject(ctx context.Context, req project_dto.C
 		log.Error().Err(err).Msg("Fehler beim Starten der DB-Transaction")
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(ctx)
-		}
-	}()
+	defer tx.Rollback(ctx)
 
 	// Create model project
 	modelProject := &entity.ProjectEntity{
@@ -93,7 +87,6 @@ func (s *ProjectService) CreateNewProject(ctx context.Context, req project_dto.C
 		log.Error().Err(err).Msg("Fehler beim Ausführen der DB-Transaktion")
 		return nil, app_errors.NewAppError(fiber.StatusInternalServerError, app_errors.ErrInternal, "internal_error", err)
 	}
-	committed = true
 
 	// Prepare response
 	resp := &project_dto.CreateNewProjectResponse{
@@ -138,9 +131,14 @@ func (s *ProjectService) GetProjectDetail(ctx context.Context, projectID, userID
 	// Check cache
 	// Why don't we cache by user_id + project_id? because the response gonna differ based on user role
 	cacheKey := fmt.Sprintf("project:details:%s:%s", projectID, role)
-	cacheData, cacheErr := utils.GetCacheData[project_dto.GetProjectDetailResponse](ctx, s.redis, cacheKey)
+	cacheData, cacheErr := s.cache.Get(ctx, cacheKey)
 	if cacheData != nil && cacheErr == nil {
-		return cacheData, nil
+		// cache.Get returns *any, so dereference and type assert to the expected type
+		if cached, ok := (*cacheData).(*project_dto.GetProjectDetailResponse); ok && cached != nil {
+			return cached, nil
+		}
+		// If cached data has unexpected type, log and continue to fetch from DB
+		log.Warn().Msgf("unexpected cache type for key %s", cacheKey)
 	}
 
 	// Get project
@@ -169,7 +167,7 @@ func (s *ProjectService) GetProjectDetail(ctx context.Context, projectID, userID
 	}
 
 	// Set cache
-	if err := utils.SetCacheData(ctx, s.redis, cacheKey, resp, 5*time.Minute); err != nil {
+	if err := s.cache.Set(ctx, cacheKey, resp, 5*time.Minute); err != nil {
 		log.Error().Err(err.Err).Msg("Fehler beim Setzen des Redis-Cache")
 		return nil, err
 	}
@@ -188,7 +186,7 @@ func (s *ProjectService) InviteProjectMember(ctx context.Context, projectID, use
 	userRole, err := s.repo.GetUserRoleInProject(ctx, userID, projectID)
 	if err != nil {
 		log.Error().Err(err).Msg("Fehler beim Abrufen der Repository")
-		return nil, nil
+		return nil, err
 	}
 
 	if userRole != string(entity.MEISTER) {

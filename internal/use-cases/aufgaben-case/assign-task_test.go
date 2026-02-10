@@ -8,6 +8,7 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -17,8 +18,8 @@ func TestAssignTask_Success(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -84,7 +85,7 @@ func TestAssignTask_UserNotProjectMember(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -117,7 +118,7 @@ func TestAssignTask_TaskNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -151,7 +152,7 @@ func TestAssignTask_TaskArchived(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -198,7 +199,7 @@ func TestAssignTask_TaskStatusArchived(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -244,7 +245,7 @@ func TestAssignTask_TaskStatusDone(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -290,7 +291,7 @@ func TestAssignTask_TaskAlreadyAssigned(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -337,7 +338,7 @@ func TestAssignTask_DueDateInPast(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -383,7 +384,7 @@ func TestAssignTask_DueDateIsNow(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -428,7 +429,7 @@ func TestAssignTask_DueDateIsOneHour(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,

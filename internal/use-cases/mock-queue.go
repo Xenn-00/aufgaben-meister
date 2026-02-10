@@ -1,4 +1,4 @@
-package aufgaben_case
+package use_cases
 
 import (
 	"time"

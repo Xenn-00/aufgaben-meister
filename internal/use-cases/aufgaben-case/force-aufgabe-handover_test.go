@@ -8,6 +8,7 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,8 +19,8 @@ func TestForceAufgabeHandover_Success(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -106,7 +107,7 @@ func TestForceAufgabeHandover_UserNotProjectMember(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -145,7 +146,7 @@ func TestForceAufgabeHandover_UserNotMeister(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -202,7 +203,7 @@ func TestForceAufgabeHandover_TaskArchived(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -255,7 +256,7 @@ func TestForceAufgabeHandover_TaskStatusDone(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -307,7 +308,7 @@ func TestForceAufgabeHandover_TargetSameAsCurrentAssignee(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,

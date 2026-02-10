@@ -8,6 +8,7 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
 	worker_task "github.com/Xenn-00/aufgaben-meister/internal/worker/tasks"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,9 @@ func TestReassignTask_Success_Meister(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
-	taskQueue := new(MockTaskQueue)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
+	taskQueue := new(use_cases.MockTaskQueue)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -112,9 +113,9 @@ func TestReassignTask_Success_Mitarbeiter(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
-	taskQueue := new(MockTaskQueue)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
+	taskQueue := new(use_cases.MockTaskQueue)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -192,8 +193,8 @@ func TestReassignTask_Meister_MissingRequiredFields(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -251,8 +252,8 @@ func TestReassignTask_Mitarbeiter_NotTaskAssignee(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -311,7 +312,7 @@ func TestReassignTask_UserNotProjectMember(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,

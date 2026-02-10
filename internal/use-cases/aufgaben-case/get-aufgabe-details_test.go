@@ -8,6 +8,7 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,7 @@ func TestGetAufgabeDetails_CacheHit(t *testing.T) {
 
 	repo.On("CheckProjectMember", ctx, projectID, userID).Return(true, (*app_errors.AppError)(nil))
 
-	cache := &MockCache{
+	cache := &use_cases.MockCache{
 		GetFn: func(ctx context.Context, key string) (*any, *app_errors.AppError) {
 			var v any = &aufgaben_dto.AufgabenItem{
 				AufgabenID: "task-1",
@@ -54,7 +55,7 @@ func TestGetAufgabeDetails_ForbiddenCacheHit(t *testing.T) {
 
 	repo.On("CheckProjectMember", ctx, projectID, userID).Return(false, (*app_errors.AppError)(nil))
 
-	cache := &MockCache{
+	cache := &use_cases.MockCache{
 		GetFn: func(ctx context.Context, key string) (*any, *app_errors.AppError) {
 			var v any = &aufgaben_dto.AufgabenItem{
 				AufgabenID: "task-1",
@@ -87,7 +88,7 @@ func TestGetAufgabeDetails_CacheMiss(t *testing.T) {
 
 	repo.On("CheckProjectMember", ctx, projectID, userID).Return(true, (*app_errors.AppError)(nil))
 
-	cache := &MockCache{
+	cache := &use_cases.MockCache{
 		GetFn: func(ctx context.Context, key string) (*any, *app_errors.AppError) {
 			return nil, nil
 		},

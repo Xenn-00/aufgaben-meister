@@ -9,7 +9,7 @@ import (
 )
 
 type ProjectServiceContract interface {
-	CreateNewProject(ctx context.Context, req project_dto.CreateNewProjectRequest, userID string) (*project_dto.CreateNewProjectResponse, *app_errors.AppError)
+	CreateNewProject(ctx context.Context, req *project_dto.CreateNewProjectRequest, userID string) (*project_dto.CreateNewProjectResponse, *app_errors.AppError)
 	GetSelfProject(ctx context.Context, userID string) ([]*project_dto.SelfProjectResponse, *app_errors.AppError)
 	GetProjectDetail(ctx context.Context, projectID, userID string) (*project_dto.GetProjectDetailResponse, *app_errors.AppError)
 	InviteProjectMember(ctx context.Context, projectID, userID string, req *project_dto.InviteProjectMemberRequest) (*project_dto.InviteProjectMemberResponse, *app_errors.AppError)

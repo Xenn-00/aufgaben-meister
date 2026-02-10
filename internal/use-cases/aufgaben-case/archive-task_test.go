@@ -6,6 +6,8 @@ import (
 
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -16,8 +18,8 @@ func TestArchiveTask_Success(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,

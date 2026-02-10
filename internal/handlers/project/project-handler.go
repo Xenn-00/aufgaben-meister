@@ -33,7 +33,7 @@ func NewProjectHandler(db *pgxpool.Pool, redis *redis.Client, i18n *internal_i18
 }
 
 func (h *ProjectHander) CreateNewProject(c *fiber.Ctx) error {
-	var req project_dto.CreateNewProjectRequest
+	var req *project_dto.CreateNewProjectRequest
 
 	// Req Body geparst werden
 	if err := c.BodyParser(&req); err != nil {

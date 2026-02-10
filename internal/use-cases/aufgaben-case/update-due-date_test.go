@@ -8,6 +8,7 @@ import (
 	aufgaben_dto "github.com/Xenn-00/aufgaben-meister/internal/dtos/aufgaben-dto"
 	"github.com/Xenn-00/aufgaben-meister/internal/entity"
 	app_errors "github.com/Xenn-00/aufgaben-meister/internal/errors"
+	use_cases "github.com/Xenn-00/aufgaben-meister/internal/use-cases"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,8 +19,8 @@ func TestUpdateDueDate_Success(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -84,7 +85,7 @@ func TestUpdateDueDate_UserNotProjectMember(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -120,7 +121,7 @@ func TestUpdateDueDate_TaskNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -156,7 +157,7 @@ func TestUpdateDueDate_TaskArchived(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -204,7 +205,7 @@ func TestUpdateDueDate_TaskStatusDone(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
+	txManager := new(use_cases.MockTxManager)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
@@ -251,8 +252,8 @@ func TestUpdateDueDate_RepoUpdateFails(t *testing.T) {
 	ctx := context.Background()
 
 	repo := new(MockAufgabenRepo)
-	txManager := new(MockTxManager)
-	tx := new(MockTx)
+	txManager := new(use_cases.MockTxManager)
+	tx := new(use_cases.MockTx)
 	service := &AufgabenService{
 		repo:      repo,
 		txManager: txManager,
