@@ -139,7 +139,7 @@ PS: Nicht gedacht als Tutorial, sonder als realistische Produktionsarchitektur.
 
 ### Ist dieses Projekt produktiv im Einsatz?
 
-Nein. Der Schwerpunkt lag nicht auf Deployent, sondern auf Architektur und sauberen Entscheidungen. Das Projekt dient dazu zu zeigen, wie Aufgaben, Rollen und Zustandsänderungen in einem realistischen Backend modelliert werden können.
+Nein. Der Schwerpunkt lag nicht auf Deployment, sondern auf Architektur und sauberen Entscheidungen. Das Projekt dient dazu zu zeigen, wie Aufgaben, Rollen und Zustandsänderungen in einem realistischen Backend modelliert werden können.
 
 ### Warum bezeichnest du das Projekt nicht als reines Demo- oder Spielzeugprojekt?
 
