@@ -378,7 +378,7 @@ func (s *ProjectService) AcceptInvitationProject(ctx context.Context, req *proje
 	return resp, nil
 }
 
-func (s *ProjectService) GetSelfInvitationPending(ctx context.Context, userID string) ([]*project_dto.SelfProjectInvitationResponse, *app_errors.AppError) {
+func (s *ProjectService) GetSelfInvitationPending(ctx context.Context, userID string) ([]project_dto.SelfProjectInvitationResponse, *app_errors.AppError) {
 	// TODO:
 	// We need to query all user's pending invitation no matter what role they play in existing project, because not always user gonna check their email.
 	// it's gonna (maybe) helpful for FE to have user's "pending invitations" data
@@ -388,10 +388,14 @@ func (s *ProjectService) GetSelfInvitationPending(ctx context.Context, userID st
 		return nil, err
 	}
 
-	var resp []*project_dto.SelfProjectInvitationResponse
+	resp := []project_dto.SelfProjectInvitationResponse{}
+
+	if len(invs) == 0 {
+		return resp, nil // return empty list
+	}
 
 	for _, inv := range invs {
-		resp = append(resp, &project_dto.SelfProjectInvitationResponse{
+		resp = append(resp, project_dto.SelfProjectInvitationResponse{
 			ID:          inv.ID,
 			ProjectID:   inv.ProjectID,
 			ProjectName: *inv.ProjectName,

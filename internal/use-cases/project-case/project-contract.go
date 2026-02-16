@@ -14,7 +14,7 @@ type ProjectServiceContract interface {
 	GetProjectDetail(ctx context.Context, projectID, userID string) (*project_dto.GetProjectDetailResponse, *app_errors.AppError)
 	InviteProjectMember(ctx context.Context, projectID, userID string, req *project_dto.InviteProjectMemberRequest) (*project_dto.InviteProjectMemberResponse, *app_errors.AppError)
 	AcceptInvitationProject(ctx context.Context, req *project_dto.InvitationQueryRequest, userID string) (*project_dto.InvitationMemberAccepted, *app_errors.AppError)
-	GetSelfInvitationPending(ctx context.Context, userID string) ([]*project_dto.SelfProjectInvitationResponse, *app_errors.AppError)
+	GetSelfInvitationPending(ctx context.Context, userID string) ([]project_dto.SelfProjectInvitationResponse, *app_errors.AppError)
 	RejectProjectInvitation(ctx context.Context, invitationID, userID string) (*project_dto.RejectProjectInvitationResponse, *app_errors.AppError)
 	RevokeProjectInvitations(ctx context.Context, projectID, userID string, req *project_dto.RevokeProjectMemberRequest) (*project_dto.RevokeProjectMemberResponse, *app_errors.AppError)
 	ResendProjectInvitations(ctx context.Context, invitationID, userID string) *app_errors.AppError
